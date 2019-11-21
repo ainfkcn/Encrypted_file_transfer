@@ -1,5 +1,7 @@
 ﻿using ClassLibrary;
 using System;
+using System.Text;
+using System.Linq;
 using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
@@ -61,17 +63,69 @@ namespace Server
         /// </summary>
         public void Process()
         {
-            Socket socket = ThreadSocketPairs[Thread.CurrentThread];
+            Socket socket = ThreadSocketPairs[Thread.CurrentThread];//获取线程对应的套接字
+            string UserName;//登陆后用来标识该线程连接对应的用户
             try
             {
                 while (true)
                 {
-                    //recive
-                    Package pRecive = Package.Recive(socket);
+                    Package pRecive = Package.Recive(socket);//接收数据包
                     WriteLine(pRecive);
 
-                    //send
-                    Package pSend = new Package { ServiceType = Service.ACK };
+                    //分类处理逻辑
+                    Package pSend = new Package();//在switch外声明，以便可以在switch块后统一发送
+                    switch (pRecive.ServiceType)
+                    {
+                        //注册部分
+                        case Service.Registration:
+                            using (var db = new UserRegistration())
+                            {
+                                //密码为空，拒绝注册
+                                if (pRecive.PayLoad[1] == "")
+                                    pSend.ServiceType = Service.EmptyPassword;
+                                else
+                                {
+                                    try
+                                    {
+                                        //用户信息写入数据库，同时告知注册成功
+                                        User newUser = new User(pRecive.PayLoad[0], pRecive.PayLoad[1]);
+                                        db.UserContext.Add(newUser);
+                                        db.SaveChanges();
+                                        pSend.ServiceType = Service.RegistrationSuccess;
+                                    }
+                                    //唯一的报错可能，用户名重复。告知客户端后拒绝注册
+                                    catch
+                                    {
+                                        WriteLine("用户名已存在");
+                                        pSend.ServiceType = Service.UserExist;
+                                    }
+                                }
+                            }
+                            break;
+                        //登陆部分
+                        case Service.Login:
+                            using (var db = new UserRegistration())
+                            {
+                                //Linq不支持表达式查询，所以只能先把用户名和密码提取出来
+                                var username = pRecive.PayLoad[0];
+                                var pw = pRecive.PayLoad[1].GetHashCode();
+
+                                //查询符合的用户名与密码组合
+                                var user = from u in db.UserContext
+                                           where u.Name.Equals(username) && u.Password == pw
+                                           select u;
+                                //如果不存在这样的组合，则回报用户名或密码错误，若存在，则登陆成功
+                                if (user.Count() == 0) { pSend.ServiceType = Service.WrongPassword; }
+                                else
+                                {
+                                    UserName = pRecive.PayLoad[0];
+                                    pSend.ServiceType = Service.ACK;
+                                    WriteLine(UserName + "登陆");
+                                }
+                            }
+                            break;
+                    }
+                    //发送回复包
                     Package.Send(socket, pSend);
                 }
             }

@@ -13,7 +13,19 @@
     /// </summary>
     public enum Service : int
     {
+        //C<->S
         ACK,
-        Login
+
+
+        //C->S
+        Login,
+        Registration,
+
+
+        //S->C
+        RegistrationSuccess,
+        WrongPassword,
+        UserExist,
+        EmptyPassword
     }
 }

@@ -17,14 +17,14 @@ namespace ClassLibrary
         /// <summary>
         /// 通信包载荷，可为null
         /// </summary>
-        public List<byte[]> PayLoad;
+        public List<string> PayLoad;
 
         /// <summary>
         /// 默认无参数构造函数，因通信协议的复杂性，暂不提供自动化构造函数，需要手动构造通信包
         /// </summary>
         public Package()
         {
-            PayLoad = new List<byte[]>();
+            PayLoad = new List<string>();
         }
 
         /// <summary>

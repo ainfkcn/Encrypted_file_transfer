@@ -56,6 +56,7 @@ namespace Client
             Package pRecive;
             string UserName;
             string op;//操作指令存储声明
+            string FileName = null;
             bool Login = false;
             Direction direction = Direction.Normal;
             FileStream fs = null;
@@ -64,7 +65,7 @@ namespace Client
                 while (true)
                 {
 
-                    while (!Login)
+                    if (!Login)
                     {
                         //用户操作选项和提示符
                         WriteLine("1.Login");
@@ -185,105 +186,78 @@ namespace Client
                                 break;
                         }
                     }
-                    while (Login)
+                    if (Login)
                     {
-                        while (direction == Direction.Normal)
+                        if (direction == Direction.Normal)
                         {
-                            //WriteLine("1.DownLoad");
-                            //WriteLine("2.UpLoad");
-                            //op = ReadLine().ToLower();
+                            WriteLine("1.DownLoad");
+                            WriteLine("2.UpLoad");
+                            op = ReadLine().ToLower();
                             pSend = new Package();
-                            //if (op.Contains("d") || op.Contains("down") || op.Equals("1"))
-                            //{
-                            //    pSend.ServiceType = Service.DownLoadSYN;
-                            //direction = Direction.DownLoad;
-                            //     
-                            //}
-                            //if (op.Contains("u") || op.Contains("up") || op.Equals("2")) { 
-                            pSend.ServiceType = Service.UpLoadSYN;
-                            direction = Direction.UpLoad;
-                            //}
-
-                            Write("FileName:");
-                            string FileName = "..\\..\\" + ReadLine();
-                            pSend.PayLoad.Add(Encode(FileName));
+                            if (op.Contains("d") || op.Contains("down") || op.Equals("1"))
+                            {
+                                direction = Direction.DownLoad;
+                                Write("FileName:");
+                                FileName = "..\\..\\" + ReadLine();
+                                fs = new FileStream(FileName, FileMode.OpenOrCreate, FileAccess.Write);
+                                fs.Seek(0, SeekOrigin.End);
+                                pSend.ServiceType = Service.DownLoadSYN;
+                                pSend.PayLoad.Add(Encode(FileName));
+                            }
+                            if (op.Contains("u") || op.Contains("up") || op.Equals("2"))
+                            {
+                                direction = Direction.UpLoad;
+                                Write("FileName:");
+                                FileName = "..\\..\\" + ReadLine();
+                                try { fs = new FileStream(FileName, FileMode.Open, FileAccess.Read); }
+                                catch (FileNotFoundException)
+                                {
+                                    direction = Direction.Normal;
+                                    FileName = null;
+                                    WriteLine("本地不存在此文件，请检查拼写");
+                                    break;
+                                }
+                                pSend.ServiceType = Service.UpLoadSYN;
+                                pSend.PayLoad.Add(Encode(FileName));
+                            }
 
                             Package.Send(socket, pSend);
-                            pRecive = Package.Recive(socket);
-
-                            switch (pRecive.ServiceType)
-                            {
-                                case Service.ACK:
-                                    if (direction == Direction.DownLoad)
-                                    {
-                                        fs = new FileStream(FileName, FileMode.OpenOrCreate, FileAccess.Write);
-                                        fs.Seek(0, SeekOrigin.End);
-                                    }
-                                    if (direction == Direction.UpLoad)
-                                    {
-                                        try
-                                        {
-                                            fs = new FileStream(FileName, FileMode.Open, FileAccess.Read);
-                                        }
-                                        catch (FileNotFoundException)
-                                        {
-                                            direction = Direction.Normal;
-                                            FileName = null;
-                                            WriteLine("本地不存在此文件，请检查拼写");
-                                            break;
-                                        }
-                                    }
-                                    pSend = new Package();
-                                    pSend.ServiceType = Service.ACK;
-                                    Package.Send(socket, pSend);
-
-                                    break;
-                                case Service.FileNotFound:
-                                    FileName = null;
-                                    direction = Direction.Normal;
-                                    WriteLine("远程不存在此文件，请检查拼写");
-                                    break;
-                            }
                         }
-                        while (direction == Direction.DownLoad)
+                        pRecive = Package.Recive(socket);
+                        switch (pRecive.ServiceType)
                         {
-                            pRecive = Package.Recive(socket);
-                            if (pRecive.ServiceType == Service.DownLoad)
-                            {
+                            case Service.DownLoad:
                                 fs.Write(pRecive.PayLoad[0], 0, 1);
                                 pSend = new Package();
                                 pSend.ServiceType = Service.ACK;
                                 Package.Send(socket, pSend);
-                            }
-                            else if (pRecive.ServiceType == Service.EOF)
-                            {
-                                direction = Direction.Normal;
-                                fs.Close();
-                            }
-                        }
-                        while (direction == Direction.UpLoad)
-                        {
-                            pRecive = Package.Recive(socket);
-                            if (pRecive.ServiceType != Service.ACK)
-                            {
-                                WriteLine("wrong");
                                 break;
-                            }
-                            byte[] buffer = new byte[Size.FileSize];
-                            pSend = new Package();
-                            int ret = fs.Read(buffer, 0, 1);
-                            if (ret != 0)
-                            {
-                                pSend.ServiceType = Service.UpLoad;
-                                pSend.PayLoad.Add(buffer);
-                            }
-                            else
-                            {
+                            case Service.EOF:
                                 direction = Direction.Normal;
                                 fs.Close();
-                                pSend.ServiceType = Service.EOF;
-                            }
-                            Package.Send(socket, pSend);
+                                break;
+                            case Service.FileNotFound:
+                                FileName = null;
+                                direction = Direction.Normal;
+                                WriteLine("远程不存在此文件，请检查拼写");
+                                break;
+                            case Service.ACK:
+                                byte[] buffer = new byte[Size.FileSize];
+                                pSend = new Package();
+                                int ret = fs.Read(buffer, 0, 1);
+                                if (ret != 0)
+                                {
+                                    pSend.ServiceType = Service.UpLoad;
+                                    pSend.PayLoad.Add(buffer);
+                                }
+                                else
+                                {
+                                    direction = Direction.Normal;
+                                    fs.Close();
+                                    pSend.ServiceType = Service.EOF;
+                                }
+                                Package.Send(socket, pSend);
+                                break;
                         }
                     }
                 }

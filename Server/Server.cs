@@ -69,7 +69,8 @@ namespace Server
             FileStream fs = null;
             Package pRecive;
             Package pSend;
-            Direction direction = Direction.Normal;
+            byte[] buffer = null;
+            int ret;
             try
             {
                 while (true)
@@ -133,21 +134,8 @@ namespace Server
                             try
                             {
                                 fs = new FileStream(Decode(pRecive.PayLoad[0]), FileMode.Open, FileAccess.Read);
-                                pSend.ServiceType = Service.ACK;
-                                direction = Direction.DownLoad;
-                                break;
-                            }
-                            catch (FileNotFoundException)
-                            {
-                                pSend.ServiceType = Service.FileNotFound;
-                                break;
-                            }
-                        //下载
-                        case Service.ACK:
-                            if (direction == Direction.DownLoad)
-                            {
-                                byte[] buffer = new byte[Size.FileSize];
-                                int ret = fs.Read(buffer, 0, 1);
+                                buffer = new byte[Size.FileSize];
+                                ret = fs.Read(buffer, 0, 1);
                                 if (ret != 0)
                                 {
                                     pSend.ServiceType = Service.DownLoad;
@@ -155,28 +143,44 @@ namespace Server
                                 }
                                 else
                                 {
-                                    direction = Direction.Normal;
                                     fs.Close();
                                     pSend.ServiceType = Service.EOF;
                                 }
+                                break;
                             }
-                            if (direction == Direction.UpLoad)
-                                pSend.ServiceType = Service.ACK;
+                            catch (FileNotFoundException)
+                            {
+                                pSend.ServiceType = Service.FileNotFound;
+                                break;
+                            }
+                        //下载中
+                        case Service.ACK:
+                            buffer = new byte[Size.FileSize];
+                            ret = fs.Read(buffer, 0, 1);
+                            if (ret != 0)
+                            {
+                                pSend.ServiceType = Service.DownLoad;
+                                pSend.PayLoad.Add(buffer);
+                            }
+                            else
+                            {
+                                fs.Close();
+                                pSend.ServiceType = Service.EOF;
+                            }
                             break;
                         //上传请求
                         case Service.UpLoadSYN:
                             fs = new FileStream(Decode(pRecive.PayLoad[0]), FileMode.OpenOrCreate, FileAccess.Write);
                             fs.Seek(0, SeekOrigin.End);
                             pSend.ServiceType = Service.ACK;
-                            direction = Direction.UpLoad;
                             break;
-                        //上传
+                        //上传中
                         case Service.UpLoad:
                             fs.Write(pRecive.PayLoad[0], 0, 1);
                             pSend.ServiceType = Service.ACK;
                             break;
+                        //上传结束
                         case Service.EOF:
-                            direction = Direction.Normal;
                             fs.Close();
                             break;
                     }

@@ -3,9 +3,17 @@
     /// <summary>
     /// 全局变量，缓冲区大小
     /// </summary>
-    public static class BufferSize
+    public static class Size
     {
-        public static int Size = 2048;
+        public static int BufferSize = 2048;
+        public static int FileSize = 1024;
+    }
+
+    public enum Direction : int
+    {
+        DownLoad,
+        UpLoad,
+        Normal,
     }
 
     /// <summary>
@@ -15,17 +23,25 @@
     {
         //C<->S
         ACK,
-
+        DownLoad,
+        UpLoad,
+        EOF,
 
         //C->S
         Login,
         Registration,
-
+        DownLoadSYN,
+        UpLoadSYN,
 
         //S->C
+        //注册
         RegistrationSuccess,
-        WrongPassword,
         UserExist,
-        EmptyPassword
+        EmptyPassword,
+        //登陆
+        LoginSuccess,
+        WrongPassword,
+        //文件传输
+        FileNotFound,
     }
 }

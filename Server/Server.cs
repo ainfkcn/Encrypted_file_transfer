@@ -1,11 +1,12 @@
 ﻿using ClassLibrary;
 using System;
-using System.Text;
-using System.Linq;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
+using System.IO;
+using static ClassLibrary.EnDe;
 using static System.Console;
 
 namespace Server
@@ -65,30 +66,33 @@ namespace Server
         {
             Socket socket = ThreadSocketPairs[Thread.CurrentThread];//获取线程对应的套接字
             string UserName;//登陆后用来标识该线程连接对应的用户
+            FileStream fs = null;
+            Package pRecive;
+            Package pSend;
+            Direction direction = Direction.Normal;
             try
             {
                 while (true)
                 {
-                    Package pRecive = Package.Recive(socket);//接收数据包
-                    WriteLine(pRecive);
+                    pRecive = Package.Recive(socket);//接收数据包
+                    pSend = new Package();//在switch外声明，以便可以在switch块后统一发送
 
                     //分类处理逻辑
-                    Package pSend = new Package();//在switch外声明，以便可以在switch块后统一发送
                     switch (pRecive.ServiceType)
                     {
-                        //注册部分
+                        //注册
                         case Service.Registration:
                             using (var db = new UserRegistration())
                             {
                                 //密码为空，拒绝注册
-                                if (pRecive.PayLoad[1] == "")
+                                if (Decode(pRecive.PayLoad[1]) == "")
                                     pSend.ServiceType = Service.EmptyPassword;
                                 else
                                 {
                                     try
                                     {
                                         //用户信息写入数据库，同时告知注册成功
-                                        User newUser = new User(pRecive.PayLoad[0], pRecive.PayLoad[1]);
+                                        User newUser = new User(Decode(pRecive.PayLoad[0]), Decode(pRecive.PayLoad[1]));
                                         db.UserContext.Add(newUser);
                                         db.SaveChanges();
                                         pSend.ServiceType = Service.RegistrationSuccess;
@@ -102,27 +106,78 @@ namespace Server
                                 }
                             }
                             break;
-                        //登陆部分
+                        //登陆
                         case Service.Login:
                             using (var db = new UserRegistration())
                             {
                                 //Linq不支持表达式查询，所以只能先把用户名和密码提取出来
-                                var username = pRecive.PayLoad[0];
-                                var pw = pRecive.PayLoad[1].GetHashCode();
+                                UserName = Decode(pRecive.PayLoad[0]);
+                                var pw = Decode(pRecive.PayLoad[1]).GetHashCode();
 
                                 //查询符合的用户名与密码组合
                                 var user = from u in db.UserContext
-                                           where u.Name.Equals(username) && u.Password == pw
+                                           where u.Name.Equals(UserName) && u.Password == pw
                                            select u;
                                 //如果不存在这样的组合，则回报用户名或密码错误，若存在，则登陆成功
                                 if (user.Count() == 0) { pSend.ServiceType = Service.WrongPassword; }
                                 else
                                 {
-                                    UserName = pRecive.PayLoad[0];
-                                    pSend.ServiceType = Service.ACK;
+                                    UserName = Decode(pRecive.PayLoad[0]);
+                                    pSend.ServiceType = Service.LoginSuccess;
                                     WriteLine(UserName + "登陆");
                                 }
                             }
+                            break;
+                        //下载请求
+                        case Service.DownLoadSYN:
+                            try
+                            {
+                                fs = new FileStream(Decode(pRecive.PayLoad[0]), FileMode.Open, FileAccess.Read);
+                                pSend.ServiceType = Service.ACK;
+                                direction = Direction.DownLoad;
+                                break;
+                            }
+                            catch (FileNotFoundException)
+                            {
+                                pSend.ServiceType = Service.FileNotFound;
+                                break;
+                            }
+                        //下载
+                        case Service.ACK:
+                            if (direction == Direction.DownLoad)
+                            {
+                                byte[] buffer = new byte[Size.FileSize];
+                                int ret = fs.Read(buffer, 0, 1);
+                                if (ret != 0)
+                                {
+                                    pSend.ServiceType = Service.DownLoad;
+                                    pSend.PayLoad.Add(buffer);
+                                }
+                                else
+                                {
+                                    direction = Direction.Normal;
+                                    fs.Close();
+                                    pSend.ServiceType = Service.EOF;
+                                }
+                            }
+                            if (direction == Direction.UpLoad)
+                                pSend.ServiceType = Service.ACK;
+                            break;
+                        //上传请求
+                        case Service.UpLoadSYN:
+                            fs = new FileStream(Decode(pRecive.PayLoad[0]), FileMode.OpenOrCreate, FileAccess.Write);
+                            fs.Seek(0, SeekOrigin.End);
+                            pSend.ServiceType = Service.ACK;
+                            direction = Direction.UpLoad;
+                            break;
+                        //上传
+                        case Service.UpLoad:
+                            fs.Write(pRecive.PayLoad[0], 0, 1);
+                            pSend.ServiceType = Service.ACK;
+                            break;
+                        case Service.EOF:
+                            direction = Direction.Normal;
+                            fs.Close();
                             break;
                     }
                     //发送回复包

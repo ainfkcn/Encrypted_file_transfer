@@ -4,6 +4,7 @@ using System.IO;
 using System.Net.Sockets;
 using System.Runtime.Serialization.Formatters.Binary;
 using System.Text;
+using static ClassLibrary.EnDe;
 
 namespace ClassLibrary
 {
@@ -17,14 +18,14 @@ namespace ClassLibrary
         /// <summary>
         /// 通信包载荷，可为null
         /// </summary>
-        public List<string> PayLoad;
+        public List<byte[]> PayLoad;
 
         /// <summary>
         /// 默认无参数构造函数，因通信协议的复杂性，暂不提供自动化构造函数，需要手动构造通信包
         /// </summary>
         public Package()
         {
-            PayLoad = new List<string>();
+            PayLoad = new List<byte[]>();
         }
 
         /// <summary>
@@ -35,7 +36,7 @@ namespace ClassLibrary
         {
             StringBuilder sb = new StringBuilder();
             sb.Append("ServiceType: " + ServiceType.ToString());
-            foreach (var cargo in PayLoad) { sb.Append("\t" + cargo.ToString()); }
+            foreach (var cargo in PayLoad) { sb.Append("\t" + Decode(cargo)); }
             return sb.ToString();
         }
 
@@ -63,7 +64,7 @@ namespace ClassLibrary
         public static Package Recive(Socket socket)
         {
             //套接字接收
-            byte[] buffer = new byte[BufferSize.Size];
+            byte[] buffer = new byte[Size.BufferSize];
             int ret = socket.Receive(buffer);
             //反序列化Routine
             MemoryStream mStream = new MemoryStream();

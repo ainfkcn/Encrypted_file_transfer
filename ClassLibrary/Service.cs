@@ -5,15 +5,10 @@
     /// </summary>
     public static class Size
     {
+        //套接字接收缓冲区
         public static int BufferSize = 2048;
+        //文件读入缓冲区
         public static int FileSize = 1024;
-    }
-
-    public enum Direction : int
-    {
-        DownLoad,
-        UpLoad,
-        Normal,
     }
 
     /// <summary>
@@ -23,8 +18,6 @@
     {
         //C<->S
         ACK,
-        DownLoad,
-        UpLoad,
         EOF,
 
         //C->S
@@ -32,6 +25,7 @@
         Registration,
         DownLoadSYN,
         UpLoadSYN,
+        UpLoad,
 
         //S->C
         //注册
@@ -43,5 +37,6 @@
         WrongPassword,
         //文件传输
         FileNotFound,
+        DownLoad,
     }
 }

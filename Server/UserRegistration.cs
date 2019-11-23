@@ -1,8 +1,8 @@
-﻿namespace Server
-{
-    using System.ComponentModel.DataAnnotations;
-    using System.Data.Entity;
+﻿using System.ComponentModel.DataAnnotations;
+using System.Data.Entity;
 
+namespace Server
+{
     public class UserRegistration : DbContext
     {
         //您的上下文已配置为从您的应用程序的配置文件(App.config 或 Web.config)
@@ -11,24 +11,16 @@
         // 
         //如果您想要针对其他数据库和/或数据库提供程序，请在应用程序配置文件中修改“UserRegistration”
         //连接字符串。
-        public UserRegistration()
-            : base("name=UserRegistration")
-        {
-        }
-
+        public UserRegistration() : base("name=UserRegistration") { }
         //为您要在模型中包含的每种实体类型都添加 DbSet。有关配置和使用 Code First  模型
         //的详细信息，请参阅 http://go.microsoft.com/fwlink/?LinkId=390109。
-
         public DbSet<User> UserContext { get; set; }
     }
-
     public class User
     {
         [Key] public string Name { get; set; }
         public int Password { get; set; }
-
         public User() { }
-
         public User(string name, string pw)
         {
             Name = name.Clone() as string;

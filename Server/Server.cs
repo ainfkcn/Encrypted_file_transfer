@@ -1,11 +1,11 @@
 ﻿using ClassLibrary;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
-using System.IO;
 using static ClassLibrary.EnDe;
 using static System.Console;
 
@@ -64,13 +64,15 @@ namespace Server
         /// </summary>
         public void Process()
         {
+            #region 变量声明，解决作用域的限制
             Socket socket = ThreadSocketPairs[Thread.CurrentThread];//获取线程对应的套接字
-            string UserName;//登陆后用来标识该线程连接对应的用户
-            FileStream fs = null;
-            Package pRecive;
-            Package pSend;
-            byte[] buffer = null;
-            int ret;
+            string UserName;            //登陆后用来标识该线程连接对应的用户
+            FileStream fs = null;       //文件流
+            Package pRecive;            //接收数据包
+            Package pSend;              //发送数据包
+            byte[] buffer = null;       //接收字符串缓冲区
+            int ret;                    //读取的文件字节数
+            #endregion
             try
             {
                 while (true)
@@ -129,18 +131,21 @@ namespace Server
                                 }
                             }
                             break;
-                        //下载请求
+                        //下载请求（服务器给客户端发送首份文件）
                         case Service.DownLoadSYN:
                             try
                             {
+                                //打开文件，读取
                                 fs = new FileStream(Decode(pRecive.PayLoad[0]), FileMode.Open, FileAccess.Read);
                                 buffer = new byte[Size.FileSize];
                                 ret = fs.Read(buffer, 0, 1);
+                                //未读到文件结尾
                                 if (ret != 0)
                                 {
                                     pSend.ServiceType = Service.DownLoad;
                                     pSend.PayLoad.Add(buffer);
                                 }
+                                //读到文件结尾
                                 else
                                 {
                                     fs.Close();
@@ -148,33 +153,36 @@ namespace Server
                                 }
                                 break;
                             }
+                            //告诉客户端文件不存在
                             catch (FileNotFoundException)
                             {
                                 pSend.ServiceType = Service.FileNotFound;
                                 break;
                             }
-                        //下载中
+                        //下载中（服务器继续给客户端发送文件）
                         case Service.ACK:
                             buffer = new byte[Size.FileSize];
                             ret = fs.Read(buffer, 0, 1);
+                            //未读到文件结尾
                             if (ret != 0)
                             {
                                 pSend.ServiceType = Service.DownLoad;
                                 pSend.PayLoad.Add(buffer);
                             }
+                            //读到文件结尾
                             else
                             {
                                 fs.Close();
                                 pSend.ServiceType = Service.EOF;
                             }
                             break;
-                        //上传请求
+                        //上传请求（打开文件，准备接收）
                         case Service.UpLoadSYN:
                             fs = new FileStream(Decode(pRecive.PayLoad[0]), FileMode.OpenOrCreate, FileAccess.Write);
-                            fs.Seek(0, SeekOrigin.End);
+                            fs.Seek(0, SeekOrigin.End);//打开文件将指针放到结尾（断点续传使用）
                             pSend.ServiceType = Service.ACK;
                             break;
-                        //上传中
+                        //上传中（继续接收文件）
                         case Service.UpLoad:
                             fs.Write(pRecive.PayLoad[0], 0, 1);
                             pSend.ServiceType = Service.ACK;

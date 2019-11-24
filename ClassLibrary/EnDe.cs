@@ -1,4 +1,6 @@
 ﻿using System.Text;
+using System.Security.Cryptography;
+using System.Linq;
 
 namespace ClassLibrary
 {
@@ -17,5 +19,39 @@ namespace ClassLibrary
         /// <param name="bytes">要解码的字节串</param>
         /// <returns>解码结果的字符串</returns>
         public static string Decode(byte[] bytes) => Encoding.UTF8.GetString(bytes);
+
+        public static byte[] AesEncrypt(byte[] message, byte[] key)
+        {
+            using (var rijndael = new RijndaelManaged()
+            {
+                Key = key.Take(32).ToArray(),
+                Mode = CipherMode.CBC,
+                Padding = PaddingMode.PKCS7,
+                IV = key.Skip(32).Take(16).ToArray(),
+                BlockSize = 128,
+                KeySize = 256,
+            })
+            {
+                ICryptoTransform cryptoTransform = rijndael.CreateEncryptor();
+                return cryptoTransform.TransformFinalBlock(message, 0, message.Length);
+            }
+        }
+
+        public static byte[] AesDecrypt(byte[] cipher, byte[] key)
+        {
+            using (var rijndael = new RijndaelManaged()
+            {
+                Key = key.Take(32).ToArray(),
+                Mode = CipherMode.CBC,
+                Padding = PaddingMode.PKCS7,
+                IV = key.Skip(32).Take(16).ToArray(),
+                BlockSize = 128,
+                KeySize = 256,
+            })
+            {
+                ICryptoTransform cryptoTransform = rijndael.CreateDecryptor();
+                return cryptoTransform.TransformFinalBlock(cipher, 0, cipher.Length);
+            }
+        }
     }
 }

@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
+using System.Security.Cryptography;
 using static ClassLibrary.EnDe;
 using static System.Console;
 
@@ -20,6 +21,10 @@ namespace Client
         /// </summary>
         private readonly IPEndPoint remoteEP;
 
+        private byte[] key;
+
+        private readonly RSACryptoServiceProvider rsa = new RSACryptoServiceProvider();
+
         /// <summary>
         /// 默认无参数构造函数，初始化Tcp套接字
         /// </summary>
@@ -28,6 +33,13 @@ namespace Client
             IPAddress ipAddress = IPAddress.Parse("127.0.0.1");
             remoteEP = new IPEndPoint(ipAddress, 11000);
             socket = new Socket(ipAddress.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
+            try
+            {
+                StreamReader sr = new StreamReader("..\\..\\rsa_public", true);
+                rsa.FromXmlString(sr.ReadToEnd());
+                sr.Close();
+            }
+            catch { WriteLine("服务器公钥丢失，请去指定位置下载服务器公钥"); }
         }
 
         /// <summary>
@@ -41,7 +53,7 @@ namespace Client
                 WriteLine("Socket connected to {0}", socket.RemoteEndPoint.ToString());
                 Shell();
             }
-            catch (Exception e) { WriteLine(e.ToString()); }
+            catch { WriteLine("远程服务器未启动"); }
             finally
             {
                 socket.Shutdown(SocketShutdown.Both);
@@ -59,7 +71,7 @@ namespace Client
             Package pRecive;            //接收数据包
             string UserName = null;     //用户名
             string op;                  //用户操作
-            string FileName = null;     //文件名
+            string FileName;            //文件名
             bool Login = false;         //是否登录
             bool DorU = false;          //是否在上传或下载中
             FileStream fs = null;       //文件流
@@ -69,12 +81,12 @@ namespace Client
                 while (true)
                 {
                     //未登陆时的提示符和操作逻辑
-                    if (!Login)
+                    if (!Login && !DorU)
                     {
                         //用户操作选项和提示符
                         WriteLine("1.Login");
                         WriteLine("0.Registration");
-                        Write("Client>");
+                        Write(">");
                         op = ReadLine().ToLower();//读入操作指令
                         pSend = new Package();
                         //注册部分
@@ -143,6 +155,8 @@ namespace Client
                                 if (temp == '\r')
                                 {
                                     pw = new string(password.ToArray());
+                                    using (var hash = new SHA384Managed())
+                                        key = hash.ComputeHash(Encode(pw));
                                     pSend.PayLoad.Add(Encode(pw));
                                     break;
                                 }
@@ -151,7 +165,7 @@ namespace Client
                             }
                             WriteLine();
                         }
-                        Package.Send(socket, pSend);
+                        Package.Send(socket, pSend, key, rsa);
                     }
                     //登陆后的提示符和操作逻辑
                     else if (Login && !DorU)
@@ -192,9 +206,9 @@ namespace Client
                             pSend.ServiceType = Service.UpLoadSYN;
                             pSend.PayLoad.Add(Encode(FileName));//将文件名发送给服务器
                         }
-                        Package.Send(socket, pSend);
+                        pRecive = Package.Recive(socket, key, rsa);
                     }
-                    pRecive = Package.Recive(socket);
+                    pRecive = Package.Recive(socket, key, rsa);
                     switch (pRecive.ServiceType)
                     {
                         //注册成功
@@ -213,6 +227,7 @@ namespace Client
                         case Service.WrongPassword:
                             WriteLine("用户名或密码错误");
                             UserName = null;
+                            key = null;
                             break;
                         //登录成功
                         case Service.LoginSuccess:
@@ -224,7 +239,7 @@ namespace Client
                             fs.Write(pRecive.PayLoad[0], 0, 1);
                             pSend = new Package();
                             pSend.ServiceType = Service.ACK;
-                            Package.Send(socket, pSend);
+                            pRecive = Package.Recive(socket, key, rsa);
                             break;
                         //下载结束
                         case Service.EOF:
@@ -255,7 +270,7 @@ namespace Client
                                 fs.Close();
                                 pSend.ServiceType = Service.EOF;
                             }
-                            Package.Send(socket, pSend);
+                            pRecive = Package.Recive(socket, key, rsa);
                             break;
                     }
                 }

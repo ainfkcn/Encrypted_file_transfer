@@ -5,6 +5,7 @@ using System.Net.Sockets;
 using System.Runtime.Serialization.Formatters.Binary;
 using System.Text;
 using static ClassLibrary.EnDe;
+using System.Security.Cryptography;
 
 namespace ClassLibrary
 {
@@ -45,8 +46,15 @@ namespace ClassLibrary
         /// </summary>
         /// <param name="socket">Tcp套接字</param>
         /// <param name="pSend">待发送的数据包</param>
-        public static void Send(Socket socket, Package pSend)
+        public static void Send(Socket socket, Package pSend, byte[] key, RSACryptoServiceProvider rsa)
         {
+            if (!(pSend.ServiceType == Service.Login
+                || pSend.ServiceType == Service.Registration))
+                for (int i = 0; i < pSend.PayLoad.Count; i++)
+                    pSend.PayLoad[i] = AesEncrypt(pSend.PayLoad[i], key);
+            else
+                for (int i = 0; i < pSend.PayLoad.Count; i++)
+                    pSend.PayLoad[i] = rsa.Encrypt(pSend.PayLoad[i], true);
             //二进制序列化Routine
             MemoryStream mStream = new MemoryStream();
             BinaryFormatter formatter = new BinaryFormatter();
@@ -61,18 +69,29 @@ namespace ClassLibrary
         /// </summary>
         /// <param name="socket">Tcp套接字</param>
         /// <returns>反序列化后的数据包</returns>
-        public static Package Recive(Socket socket)
+        public static Package Recive(Socket socket, byte[] key, RSACryptoServiceProvider rsa)
         {
             //套接字接收
             byte[] buffer = new byte[Size.BufferSize];
             int ret = socket.Receive(buffer);
+            Package pRecive;
             //反序列化Routine
             MemoryStream mStream = new MemoryStream();
             BinaryFormatter deformatter = new BinaryFormatter();
             mStream.Write(buffer, 0, ret);
             mStream.Flush();
             mStream.Seek(0, SeekOrigin.Begin);
-            return deformatter.Deserialize(mStream) as Package;
+            pRecive = deformatter.Deserialize(mStream) as Package;
+
+            if (!(pRecive.ServiceType == Service.Login
+                || pRecive.ServiceType == Service.Registration))
+                for (int i = 0; i < pRecive.PayLoad.Count; i++)
+                    pRecive.PayLoad[i] = AesDecrypt(pRecive.PayLoad[i], key);
+            else
+                for (int i = 0; i < pRecive.PayLoad.Count; i++)
+                    pRecive.PayLoad[i] = rsa.Decrypt(pRecive.PayLoad[i], true);
+
+            return pRecive;
         }
     }
 }

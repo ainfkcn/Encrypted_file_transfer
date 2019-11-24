@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
+using System.Security.Cryptography;
 using System.Threading;
 using static ClassLibrary.EnDe;
 using static System.Console;
@@ -26,6 +27,8 @@ namespace Server
         /// </summary>
         private readonly IPEndPoint localEndPoint;
 
+        private readonly RSACryptoServiceProvider rsa = new RSACryptoServiceProvider();
+
         /// <summary>
         /// 无参构造函数，对变量进行赋值和初始化
         /// </summary>
@@ -34,6 +37,23 @@ namespace Server
             ThreadSocketPairs = new Dictionary<Thread, Socket>();
             ipAddress = IPAddress.Parse("127.0.0.1");
             localEndPoint = new IPEndPoint(ipAddress, 11000);
+            try
+            {
+                StreamReader sr1 = new StreamReader("..\\..\\rsa_public", true);
+                StreamReader sr2 = new StreamReader("..\\..\\rsa_private", true);
+                rsa.FromXmlString(sr2.ReadToEnd());
+                sr1.Close();
+                sr2.Close();
+            }
+            catch
+            {
+                StreamWriter sw1 = new StreamWriter("..\\..\\rsa_public", false);
+                StreamWriter sw2 = new StreamWriter("..\\..\\rsa_private", false);
+                sw1.Write(rsa.ToXmlString(false));
+                sw2.Write(rsa.ToXmlString(true));
+                sw1.Close();
+                sw2.Close();
+            }
         }
 
         /// <summary>
@@ -71,13 +91,14 @@ namespace Server
             Package pRecive;            //接收数据包
             Package pSend;              //发送数据包
             byte[] buffer = null;       //接收字符串缓冲区
+            byte[] key = null;
             int ret;                    //读取的文件字节数
             #endregion
             try
             {
                 while (true)
                 {
-                    pRecive = Package.Recive(socket);//接收数据包
+                    pRecive = Package.Recive(socket, key, rsa);//接收数据包
                     pSend = new Package();//在switch外声明，以便可以在switch块后统一发送
 
                     //分类处理逻辑
@@ -125,6 +146,8 @@ namespace Server
                                 if (user.Count() == 0) { pSend.ServiceType = Service.WrongPassword; }
                                 else
                                 {
+                                    using (var hash = new SHA384Managed())
+                                        key = hash.ComputeHash(pRecive.PayLoad[1]);
                                     UserName = Decode(pRecive.PayLoad[0]);
                                     pSend.ServiceType = Service.LoginSuccess;
                                     WriteLine(UserName + "登陆");
@@ -193,7 +216,7 @@ namespace Server
                             break;
                     }
                     //发送回复包
-                    Package.Send(socket, pSend);
+                    pRecive = Package.Recive(socket, key, rsa);
                 }
             }
             //特殊错误情况：如果远程主机关闭了套接字，则Receive函数立刻返回。但由于未收到信息，所以反序列化时会报错

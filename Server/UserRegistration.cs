@@ -18,9 +18,23 @@ namespace Server
     }
     public class User
     {
+        /// <summary>
+        /// 用户名，主键
+        /// </summary>
         [Key] public string Name { get; set; }
+        /// <summary>
+        /// 用户密码的hash（使用C#的object.gethashcode()方法）
+        /// </summary>
         public int Password { get; set; }
+        /// <summary>
+        /// 默认构造函数
+        /// </summary>
         public User() { }
+        /// <summary>
+        /// 带参构造函数
+        /// </summary>
+        /// <param name="name">用户名</param>
+        /// <param name="pw">用户的密码（此刻还没有取哈希）</param>
         public User(string name, string pw)
         {
             Name = name.Clone() as string;

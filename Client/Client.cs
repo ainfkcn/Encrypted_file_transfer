@@ -20,9 +20,13 @@ namespace Client
         /// 套接字绑定时所需的远端地址
         /// </summary>
         private readonly IPEndPoint remoteEP;
-
+        /// <summary>
+        /// AES密钥
+        /// </summary>
         private byte[] key;
-
+        /// <summary>
+        /// RSA公钥
+        /// </summary>
         private readonly RSACryptoServiceProvider rsa = new RSACryptoServiceProvider();
 
         /// <summary>
@@ -30,16 +34,18 @@ namespace Client
         /// </summary>
         public Client()
         {
+            //绑定套接字
             IPAddress ipAddress = IPAddress.Parse("127.0.0.1");
             remoteEP = new IPEndPoint(ipAddress, 11000);
             socket = new Socket(ipAddress.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
+            //加载公钥，如果公钥文件不存在，则报错退出
             try
             {
                 StreamReader sr = new StreamReader("..\\..\\rsa_public", true);
                 rsa.FromXmlString(sr.ReadToEnd());
                 sr.Close();
             }
-            catch { WriteLine("服务器公钥丢失，请去指定位置下载服务器公钥"); }
+            catch (FileNotFoundException) { WriteLine("服务器公钥丢失，请去指定位置下载服务器公钥"); throw; }
         }
 
         /// <summary>
@@ -47,18 +53,18 @@ namespace Client
         /// </summary>
         public void Start()
         {
+            //连接服务器，交互，关闭套接字
             try
             {
                 socket.Connect(remoteEP);
                 WriteLine("Socket connected to {0}", socket.RemoteEndPoint.ToString());
                 Shell();
-            }
-            catch { WriteLine("远程服务器未启动"); }
-            finally
-            {
                 socket.Shutdown(SocketShutdown.Both);
-                socket.Close();
             }
+            //出错则说明服务器未启动
+            catch (SocketException) { WriteLine("远程服务器未启动"); }
+            //释放套接字
+            finally { socket.Close(); }
         }
 
         /// <summary>
@@ -71,7 +77,7 @@ namespace Client
             Package pRecive;            //接收数据包
             string UserName = null;     //用户名
             string op;                  //用户操作
-            string FileName;            //文件名
+            string FileName = null;            //文件名
             bool Login = false;         //是否登录
             bool DorU = false;          //是否在上传或下载中
             FileStream fs = null;       //文件流
@@ -90,7 +96,7 @@ namespace Client
                         op = ReadLine().ToLower();//读入操作指令
                         pSend = new Package();
                         //注册部分
-                        if (op.Contains("r") || op.Contains("reg") || op.Equals("0"))
+                        if (op.Equals("r") || op.Equals("reg") || op.Equals("0"))
                         {
                             pSend.ServiceType = Service.Registration;//数据包构造
                             Write("用户名:"); pSend.PayLoad.Add(Encode(ReadLine()));//用户名
@@ -137,13 +143,10 @@ namespace Client
                                 WriteLine("\n两次密码不匹配");
                         }
                         //登陆部分
-                        else if (op.Contains("l") || op.Contains("log") || op.Equals("1"))
+                        else if (op.Equals("l") || op.Equals("log") || op.Equals("1"))
                         {
                             pSend.ServiceType = Service.Login;//数据包构造
-                            //用户名
-                            Write("用户名:");
-                            UserName = ReadLine();
-                            pSend.PayLoad.Add(Encode(UserName));
+                            Write("用户名:"); pSend.PayLoad.Add(Encode(ReadLine()));//用户名
                             //密码（不回显）
                             Write("密码:");
                             string pw;
@@ -165,6 +168,9 @@ namespace Client
                             }
                             WriteLine();
                         }
+                        //假如输入了其他乱七八糟的指令
+                        else continue;
+                        //发送数据包
                         Package.Send(socket, pSend, key, rsa);
                     }
                     //登陆后的提示符和操作逻辑
@@ -173,11 +179,11 @@ namespace Client
                         //用户操作提示符
                         WriteLine("1.DownLoad");
                         WriteLine("2.UpLoad");
-                        WriteLine(UserName + ">");
+                        Write(UserName + ">");
                         op = ReadLine().ToLower();//读入操作指令
                         pSend = new Package();
                         //下载
-                        if (op.Contains("d") || op.Contains("down") || op.Equals("1"))
+                        if (op.Equals("d") || op.Equals("down") || op.Equals("1"))
                         {
                             DorU = true;//设置上传下载中标志位
                             Write("FileName:");
@@ -188,7 +194,7 @@ namespace Client
                             pSend.PayLoad.Add(Encode(FileName));//将文件名发送给服务端，让服务器寻找文件
                         }
                         //上传
-                        else if (op.Contains("u") || op.Contains("up") || op.Equals("2"))
+                        else if (op.Equals("u") || op.Equals("up") || op.Equals("2"))
                         {
                             DorU = true;//设置上传下载中标志位
                             Write("FileName:");
@@ -206,9 +212,14 @@ namespace Client
                             pSend.ServiceType = Service.UpLoadSYN;
                             pSend.PayLoad.Add(Encode(FileName));//将文件名发送给服务器
                         }
-                        pRecive = Package.Recive(socket, key, rsa);
+                        //如果输入了其他乱七八糟的指令
+                        else continue;
+                        //发送数据包
+                        Package.Send(socket, pSend, key, rsa);
                     }
+                    //接收数据包
                     pRecive = Package.Recive(socket, key, rsa);
+                    //处理逻辑
                     switch (pRecive.ServiceType)
                     {
                         //注册成功
@@ -239,7 +250,7 @@ namespace Client
                             fs.Write(pRecive.PayLoad[0], 0, 1);
                             pSend = new Package();
                             pSend.ServiceType = Service.ACK;
-                            pRecive = Package.Recive(socket, key, rsa);
+                            Package.Send(socket, pSend, key, rsa);
                             break;
                         //下载结束
                         case Service.EOF:
@@ -248,6 +259,7 @@ namespace Client
                             break;
                         //服务器未找到要下载的文件
                         case Service.FileNotFound:
+                            File.Delete(FileName);//删除创建的空文件
                             FileName = null;
                             DorU = false;
                             WriteLine("远程不存在此文件，请检查拼写");
@@ -256,9 +268,8 @@ namespace Client
                         case Service.ACK:
                             byte[] buffer = new byte[Size.FileSize];
                             pSend = new Package();
-                            int ret = fs.Read(buffer, 0, 1);
                             //未到文件末尾
-                            if (ret != 0)
+                            if (fs.Read(buffer, 0, 1) != 0)
                             {
                                 pSend.ServiceType = Service.UpLoad;
                                 pSend.PayLoad.Add(buffer);
@@ -270,7 +281,7 @@ namespace Client
                                 fs.Close();
                                 pSend.ServiceType = Service.EOF;
                             }
-                            pRecive = Package.Recive(socket, key, rsa);
+                            Package.Send(socket, pSend, key, rsa);
                             break;
                     }
                 }

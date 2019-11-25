@@ -26,7 +26,9 @@ namespace Server
         /// 服务器IP地址+端口，用于套接字bind
         /// </summary>
         private readonly IPEndPoint localEndPoint;
-
+        /// <summary>
+        /// RSA私钥
+        /// </summary>
         private readonly RSACryptoServiceProvider rsa = new RSACryptoServiceProvider();
 
         /// <summary>
@@ -34,9 +36,11 @@ namespace Server
         /// </summary>
         public Server()
         {
+            //绑定套接字
             ThreadSocketPairs = new Dictionary<Thread, Socket>();
             ipAddress = IPAddress.Parse("127.0.0.1");
             localEndPoint = new IPEndPoint(ipAddress, 11000);
+            //检查公钥和私钥文件是否存在，存在则读进私钥
             try
             {
                 StreamReader sr1 = new StreamReader("..\\..\\rsa_public", true);
@@ -45,6 +49,7 @@ namespace Server
                 sr1.Close();
                 sr2.Close();
             }
+            //若文件不存在，则重新生成新的公钥和私钥对
             catch
             {
                 StreamWriter sw1 = new StreamWriter("..\\..\\rsa_public", false);
@@ -75,7 +80,7 @@ namespace Server
                         workingThread.Start();
                     }
                 }
-                catch (Exception e) { WriteLine(e.ToString()); }
+                catch (SocketException) { WriteLine("客户端断开连接"); }
             }
         }
 
@@ -100,7 +105,6 @@ namespace Server
                 {
                     pRecive = Package.Recive(socket, key, rsa);//接收数据包
                     pSend = new Package();//在switch外声明，以便可以在switch块后统一发送
-
                     //分类处理逻辑
                     switch (pRecive.ServiceType)
                     {
@@ -146,6 +150,7 @@ namespace Server
                                 if (user.Count() == 0) { pSend.ServiceType = Service.WrongPassword; }
                                 else
                                 {
+                                    //用户存在，则加载用户对应的AES密钥
                                     using (var hash = new SHA384Managed())
                                         key = hash.ComputeHash(pRecive.PayLoad[1]);
                                     UserName = Decode(pRecive.PayLoad[0]);
@@ -216,7 +221,7 @@ namespace Server
                             break;
                     }
                     //发送回复包
-                    pRecive = Package.Recive(socket, key, rsa);
+                    Package.Send(socket, pSend, key, rsa);
                 }
             }
             //特殊错误情况：如果远程主机关闭了套接字，则Receive函数立刻返回。但由于未收到信息，所以反序列化时会报错

@@ -22,6 +22,7 @@
 
         //C->S
         Login,
+        Logout,
         Registration,
         DownLoadSYN,
         UpLoadSYN,

@@ -45,9 +45,8 @@ namespace Client
                 rsa.FromXmlString(sr.ReadToEnd());
                 sr.Close();
             }
-            catch (FileNotFoundException) { WriteLine("服务器公钥丢失，请去指定位置下载服务器公钥"); throw; }
+            catch (FileNotFoundException) { throw new Exception("服务器公钥丢失，请去指定位置下载服务器公钥"); }
         }
-
         /// <summary>
         /// 客户端启动，连接后开始进入交互函数
         /// </summary>
@@ -66,7 +65,6 @@ namespace Client
             //释放套接字
             finally { socket.Close(); }
         }
-
         /// <summary>
         /// 构想中的交互函数，无参型；有参型用来做shell
         /// </summary>
@@ -77,7 +75,7 @@ namespace Client
             Package pRecive;            //接收数据包
             string UserName = null;     //用户名
             string op;                  //用户操作
-            string FileName = null;            //文件名
+            string FileName = null;     //文件名
             bool Login = false;         //是否登录
             bool DorU = false;          //是否在上传或下载中
             FileStream fs = null;       //文件流
@@ -91,12 +89,39 @@ namespace Client
                     {
                         //用户操作选项和提示符
                         WriteLine("1.Login");
-                        WriteLine("0.Registration");
+                        WriteLine("9.Registration");
+                        WriteLine("0.Exit");
                         Write(">");
                         op = ReadLine().ToLower();//读入操作指令
                         pSend = new Package();
+                        //登陆部分
+                        if (op.Equals("l") || op.Equals("log") || op.Equals("1"))
+                        {
+                            pSend.ServiceType = Service.Login;//数据包构造
+                            Write("用户名:"); pSend.PayLoad.Add(Encode(ReadLine()));//用户名
+                            //密码（不回显）
+                            Write("密码:");
+                            string pw;
+                            List<char> password = new List<char>();
+                            while (true)
+                            {
+                                char temp = ReadKey(true).KeyChar;//读取输入
+                                //如果是回车键跳出，不是则将字符附加到串的尾部
+                                if (temp == '\r')
+                                {
+                                    pw = new string(password.ToArray());
+                                    using (var hash = new SHA384Managed())
+                                        key = hash.ComputeHash(Encode(pw));
+                                    pSend.PayLoad.Add(Encode(pw));
+                                    break;
+                                }
+                                else
+                                    password.Add(temp);
+                            }
+                            WriteLine();
+                        }
                         //注册部分
-                        if (op.Equals("r") || op.Equals("reg") || op.Equals("0"))
+                        else if (op.Equals("r") || op.Equals("reg") || op.Equals("9"))
                         {
                             pSend.ServiceType = Service.Registration;//数据包构造
                             Write("用户名:"); pSend.PayLoad.Add(Encode(ReadLine()));//用户名
@@ -142,32 +167,8 @@ namespace Client
                             else
                                 WriteLine("\n两次密码不匹配");
                         }
-                        //登陆部分
-                        else if (op.Equals("l") || op.Equals("log") || op.Equals("1"))
-                        {
-                            pSend.ServiceType = Service.Login;//数据包构造
-                            Write("用户名:"); pSend.PayLoad.Add(Encode(ReadLine()));//用户名
-                            //密码（不回显）
-                            Write("密码:");
-                            string pw;
-                            List<char> password = new List<char>();
-                            while (true)
-                            {
-                                char temp = ReadKey(true).KeyChar;//读取输入
-                                //如果是回车键跳出，不是则将字符附加到串的尾部
-                                if (temp == '\r')
-                                {
-                                    pw = new string(password.ToArray());
-                                    using (var hash = new SHA384Managed())
-                                        key = hash.ComputeHash(Encode(pw));
-                                    pSend.PayLoad.Add(Encode(pw));
-                                    break;
-                                }
-                                else
-                                    password.Add(temp);
-                            }
-                            WriteLine();
-                        }
+                        //退出
+                        else if (op.Equals("e") || op.Equals("exit") || op.Equals("0")) break;
                         //假如输入了其他乱七八糟的指令
                         else continue;
                         //发送数据包
@@ -179,6 +180,7 @@ namespace Client
                         //用户操作提示符
                         WriteLine("1.DownLoad");
                         WriteLine("2.UpLoad");
+                        WriteLine("0.Exit");
                         Write(UserName + ">");
                         op = ReadLine().ToLower();//读入操作指令
                         pSend = new Package();
@@ -211,6 +213,15 @@ namespace Client
                             }
                             pSend.ServiceType = Service.UpLoadSYN;
                             pSend.PayLoad.Add(Encode(FileName));//将文件名发送给服务器
+                        }
+                        //退出
+                        else if (op.Equals("e") || op.Equals("exit") || op.Equals("0"))
+                        {
+                            pSend.ServiceType = Service.Logout;
+                            Login = false;
+                            UserName = null;
+                            key = null;
+                            WriteLine("已退出登录");
                         }
                         //如果输入了其他乱七八糟的指令
                         else continue;
@@ -255,10 +266,12 @@ namespace Client
                         //下载结束
                         case Service.EOF:
                             DorU = false;
+                            WriteLine("下载成功");
                             fs.Close();
                             break;
                         //服务器未找到要下载的文件
                         case Service.FileNotFound:
+                            fs.Close();
                             File.Delete(FileName);//删除创建的空文件
                             FileName = null;
                             DorU = false;
@@ -266,22 +279,30 @@ namespace Client
                             break;
                         //上传中（读取文件发送给服务器端）
                         case Service.ACK:
-                            byte[] buffer = new byte[Size.FileSize];
-                            pSend = new Package();
-                            //未到文件末尾
-                            if (fs.Read(buffer, 0, 1) != 0)
+                            if (Login)
                             {
-                                pSend.ServiceType = Service.UpLoad;
-                                pSend.PayLoad.Add(buffer);
+                                byte[] buffer = new byte[Size.FileSize];
+                                pSend = new Package();
+                                //未到文件末尾
+                                if (fs.Read(buffer, 0, 1) != 0)
+                                {
+                                    pSend.ServiceType = Service.UpLoad;
+                                    pSend.PayLoad.Add(buffer);
+                                }
+                                //到了文件末尾
+                                else
+                                {
+                                    DorU = false;
+                                    WriteLine("上传完成");
+                                    fs.Close();
+                                    pSend.ServiceType = Service.EOF;
+                                }
+                                Package.Send(socket, pSend, key, rsa);
                             }
-                            //到了文件末尾
                             else
                             {
-                                DorU = false;
-                                fs.Close();
-                                pSend.ServiceType = Service.EOF;
+                                ;
                             }
-                            Package.Send(socket, pSend, key, rsa);
                             break;
                     }
                 }

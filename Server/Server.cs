@@ -30,12 +30,20 @@ namespace Server
         /// RSA私钥
         /// </summary>
         private readonly RSACryptoServiceProvider rsa = new RSACryptoServiceProvider();
+        /// <summary>
+        /// 日志文件
+        /// </summary>
+        private readonly StreamWriter log;
 
         /// <summary>
         /// 无参构造函数，对变量进行赋值和初始化
         /// </summary>
         public Server()
         {
+            //打开/创建日志文件，并使用追加模式写入
+            log = new StreamWriter("..\\..\\" + DateTime.Today.ToLongDateString() + ".log", true);
+            //注册处理ctrl+c事件的委托
+            CancelKeyPress += new ConsoleCancelEventHandler(Server_CancelKeyPress);
             //绑定套接字
             ThreadSocketPairs = new Dictionary<Thread, Socket>();
             ipAddress = IPAddress.Parse("127.0.0.1");
@@ -60,7 +68,18 @@ namespace Server
                 sw2.Close();
             }
         }
-
+        /// <summary>
+        /// 处理ctrl+c终端的函数
+        /// </summary>
+        /// <param name="sender">事件源</param>
+        /// <param name="e">事件数据</param>
+        private void Server_CancelKeyPress(object sender, ConsoleCancelEventArgs e)
+        {
+            log.WriteLine($"{DateTime.Now.ToLocalTime()} 服务器退出");
+            log.Close();
+            foreach (Thread t in ThreadSocketPairs.Keys) { t.Abort(); }
+            Thread.CurrentThread.Abort();
+        }
         /// <summary>
         /// 服务器启动函数，无限循环负责侦听。有新链接时交给子线程去处理
         /// </summary>
@@ -72,18 +91,25 @@ namespace Server
                 {
                     listener.Bind(localEndPoint);
                     listener.Listen(10);
+                    log.WriteLine($"{DateTime.Now.ToLocalTime()} 服务器启动成功");
                     while (true)
                     {
                         WriteLine("Waiting for a connection...");
                         Thread workingThread = new Thread(Process);
-                        ThreadSocketPairs.Add(workingThread, listener.Accept());
+                        Socket workingSocket = listener.Accept();
+                        log.WriteLine($"{DateTime.Now.ToLocalTime()} {workingSocket.RemoteEndPoint} 连接");
+                        ThreadSocketPairs.Add(workingThread, workingSocket);
                         workingThread.Start();
                     }
                 }
-                catch (SocketException) { WriteLine("客户端断开连接"); }
+                catch (SocketException e)
+                {
+                    log.WriteLine($"{DateTime.Now.ToLocalTime()} {listener.LocalEndPoint} 绑定/侦听失败，服务器启动失败");
+                    log.WriteLine(e.ToString());
+                }
+                finally { log.Close(); }
             }
         }
-
         /// <summary>
         /// 服务器线程函数，处理交互逻辑，一个线程对应一个客户端
         /// </summary>
@@ -91,7 +117,7 @@ namespace Server
         {
             #region 变量声明，解决作用域的限制
             Socket socket = ThreadSocketPairs[Thread.CurrentThread];//获取线程对应的套接字
-            string UserName;            //登陆后用来标识该线程连接对应的用户
+            string UserName = null;     //登陆后用来标识该线程连接对应的用户
             FileStream fs = null;       //文件流
             Package pRecive;            //接收数据包
             Package pSend;              //发送数据包
@@ -114,7 +140,10 @@ namespace Server
                             {
                                 //密码为空，拒绝注册
                                 if (Decode(pRecive.PayLoad[1]) == "")
+                                {
                                     pSend.ServiceType = Service.EmptyPassword;
+                                    log.WriteLine($"{DateTime.Now.ToLocalTime()} {socket.RemoteEndPoint} 用空密码注册");
+                                }
                                 else
                                 {
                                     try
@@ -124,11 +153,12 @@ namespace Server
                                         db.UserContext.Add(newUser);
                                         db.SaveChanges();
                                         pSend.ServiceType = Service.RegistrationSuccess;
+                                        log.WriteLine($"{DateTime.Now.ToLocalTime()} {socket.RemoteEndPoint} 以{Decode(pRecive.PayLoad[0])}注册成功");
                                     }
                                     //唯一的报错可能，用户名重复。告知客户端后拒绝注册
                                     catch
                                     {
-                                        WriteLine("用户名已存在");
+                                        log.WriteLine($"{DateTime.Now.ToLocalTime()} {socket.RemoteEndPoint} 以重复用户名注册");
                                         pSend.ServiceType = Service.UserExist;
                                     }
                                 }
@@ -147,17 +177,28 @@ namespace Server
                                            where u.Name.Equals(UserName) && u.Password == pw
                                            select u;
                                 //如果不存在这样的组合，则回报用户名或密码错误，若存在，则登陆成功
-                                if (user.Count() == 0) { pSend.ServiceType = Service.WrongPassword; }
+                                if (user.Count() == 0)
+                                {
+                                    log.WriteLine($"{DateTime.Now.ToLocalTime()} {socket.RemoteEndPoint} 密码错误");
+                                    pSend.ServiceType = Service.WrongPassword;
+                                }
                                 else
                                 {
                                     //用户存在，则加载用户对应的AES密钥
+                                    log.WriteLine($"{DateTime.Now.ToLocalTime()} {socket.RemoteEndPoint} 以{UserName}登陆");
                                     using (var hash = new SHA384Managed())
                                         key = hash.ComputeHash(pRecive.PayLoad[1]);
                                     UserName = Decode(pRecive.PayLoad[0]);
                                     pSend.ServiceType = Service.LoginSuccess;
-                                    WriteLine(UserName + "登陆");
                                 }
                             }
+                            break;
+                        //登出
+                        case Service.Logout:
+                            log.WriteLine($"{DateTime.Now.ToLocalTime()} {socket.RemoteEndPoint} 用户{UserName}退出登陆");
+                            pSend.ServiceType = Service.ACK;
+                            UserName = null;
+                            key = null;
                             break;
                         //下载请求（服务器给客户端发送首份文件）
                         case Service.DownLoadSYN:
@@ -165,6 +206,7 @@ namespace Server
                             {
                                 //打开文件，读取
                                 fs = new FileStream(Decode(pRecive.PayLoad[0]), FileMode.Open, FileAccess.Read);
+                                log.WriteLine($"{DateTime.Now.ToLocalTime()} {socket.RemoteEndPoint} {UserName} 下载{fs.Name}");
                                 buffer = new byte[Size.FileSize];
                                 ret = fs.Read(buffer, 0, 1);
                                 //未读到文件结尾
@@ -176,6 +218,7 @@ namespace Server
                                 //读到文件结尾
                                 else
                                 {
+                                    log.WriteLine($"{DateTime.Now.ToLocalTime()} {socket.RemoteEndPoint} {UserName} 下载{fs.Name}成功");
                                     fs.Close();
                                     pSend.ServiceType = Service.EOF;
                                 }
@@ -184,6 +227,7 @@ namespace Server
                             //告诉客户端文件不存在
                             catch (FileNotFoundException)
                             {
+                                log.WriteLine($"{DateTime.Now.ToLocalTime()} {socket.RemoteEndPoint} {UserName} 下载{Decode(pRecive.PayLoad[0])}失败");
                                 pSend.ServiceType = Service.FileNotFound;
                                 break;
                             }
@@ -200,6 +244,7 @@ namespace Server
                             //读到文件结尾
                             else
                             {
+                                log.WriteLine($"{DateTime.Now.ToLocalTime()} {socket.RemoteEndPoint} {UserName} 下载{fs.Name}成功");
                                 fs.Close();
                                 pSend.ServiceType = Service.EOF;
                             }
@@ -207,6 +252,7 @@ namespace Server
                         //上传请求（打开文件，准备接收）
                         case Service.UpLoadSYN:
                             fs = new FileStream(Decode(pRecive.PayLoad[0]), FileMode.OpenOrCreate, FileAccess.Write);
+                            log.WriteLine($"{DateTime.Now.ToLocalTime()} {socket.RemoteEndPoint} {UserName} 上传{fs.Name}");
                             fs.Seek(0, SeekOrigin.End);//打开文件将指针放到结尾（断点续传使用）
                             pSend.ServiceType = Service.ACK;
                             break;
@@ -217,6 +263,7 @@ namespace Server
                             break;
                         //上传结束
                         case Service.EOF:
+                            log.WriteLine($"{DateTime.Now.ToLocalTime()} {socket.RemoteEndPoint} {UserName} 上传{fs.Name}成功");
                             fs.Close();
                             break;
                     }
@@ -226,12 +273,17 @@ namespace Server
             }
             //特殊错误情况：如果远程主机关闭了套接字，则Receive函数立刻返回。但由于未收到信息，所以反序列化时会报错
             catch (System.Runtime.Serialization.SerializationException) { WriteLine("远程主机已断开连接"); }
-            catch (Exception e) { WriteLine(e.ToString()); }
+            catch (SocketException) { WriteLine("远程主机已断开连接"); }
+            catch (Exception e)
+            {
+                log.WriteLine($"{DateTime.Now.ToLocalTime()} {socket.RemoteEndPoint} {UserName} {e}");
+                WriteLine($"{DateTime.Now.ToLocalTime()} {socket.RemoteEndPoint} {UserName} {e}");
+            }
             finally
             {
+                log.WriteLine($"{DateTime.Now.ToLocalTime()} {socket.RemoteEndPoint} 客户端关闭");
                 socket.Shutdown(SocketShutdown.Both);
                 socket.Close();
-                WriteLine("Thread exit.");
             }
         }
     }

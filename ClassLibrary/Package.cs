@@ -34,9 +34,10 @@ namespace ClassLibrary
         {
             StringBuilder sb = new StringBuilder();
             sb.Append("ServiceType: " + ServiceType.ToString());
-            foreach (var cargo in PayLoad) { sb.Append("\t" + Decode(cargo)); }
+            foreach (var cargo in PayLoad) { sb.Append(" " + Decode(cargo)); }
             return sb.ToString();
         }
+
         /// <summary>
         /// 加密，序列化并发送数据包
         /// </summary>

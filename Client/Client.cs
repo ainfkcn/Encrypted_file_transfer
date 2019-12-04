@@ -76,6 +76,8 @@ namespace Client
             string UserName = null;     //用户名
             string op;                  //用户操作
             string FileName = null;     //文件名
+            string LocalDirectory = Directory.GetCurrentDirectory();//本地路径
+            string RemoteDirectory = null;//远程路径
             bool Login = false;         //是否登录
             bool DorU = false;          //是否在上传或下载中
             FileStream fs = null;       //文件流
@@ -93,12 +95,13 @@ namespace Client
                         WriteLine("0.Exit");
                         Write(">");
                         op = ReadLine().ToLower();//读入操作指令
-                        pSend = new Package();
                         //登陆部分
                         if (op.Equals("l") || op.Equals("log") || op.Equals("1"))
                         {
-                            pSend.ServiceType = Service.Login;//数据包构造
-                            Write("用户名:"); pSend.PayLoad.Add(Encode(ReadLine()));//用户名
+                            pSend = new Package { ServiceType = Service.Login };//数据包构造
+                            Write("用户名:");
+                            UserName = ReadLine();
+                            pSend.PayLoad.Add(Encode(UserName));//用户名
                             //密码（不回显）
                             Write("密码:");
                             string pw;
@@ -123,7 +126,7 @@ namespace Client
                         //注册部分
                         else if (op.Equals("r") || op.Equals("reg") || op.Equals("9"))
                         {
-                            pSend.ServiceType = Service.Registration;//数据包构造
+                            pSend = new Package { ServiceType = Service.Registration };//数据包构造
                             Write("用户名:"); pSend.PayLoad.Add(Encode(ReadLine()));//用户名
                             //第一次输入密码（不回显）
                             Write("密码:");
@@ -180,29 +183,30 @@ namespace Client
                         //用户操作提示符
                         WriteLine("1.DownLoad");
                         WriteLine("2.UpLoad");
+                        WriteLine("3.LocalDirectory");
+                        WriteLine("4.RemoteDirectory");
                         WriteLine("0.Exit");
                         Write(UserName + ">");
                         op = ReadLine().ToLower();//读入操作指令
-                        pSend = new Package();
                         //下载
-                        if (op.Equals("d") || op.Equals("down") || op.Equals("1"))
+                        if (op.Equals("d") || op.Contains("down") || op.Equals("1"))
                         {
                             DorU = true;//设置上传下载中标志位
                             Write("FileName:");
-                            FileName = "..\\..\\" + ReadLine();//读取要下载的文件名
-                            fs = new FileStream(FileName, FileMode.OpenOrCreate, FileAccess.Write);
+                            FileName = ReadLine();//读取要下载的文件名
+                            fs = new FileStream(LocalDirectory + FileName, FileMode.OpenOrCreate, FileAccess.Write);
                             fs.Seek(0, SeekOrigin.End);//打开文件并将光标设置到末尾（断点续传需要）
-                            pSend.ServiceType = Service.DownLoadSYN;
-                            pSend.PayLoad.Add(Encode(FileName));//将文件名发送给服务端，让服务器寻找文件
+                            pSend = new Package { ServiceType = Service.DownLoadSYN };
+                            pSend.PayLoad.Add(Encode(RemoteDirectory + FileName));//将文件名发送给服务端，让服务器寻找文件
                         }
                         //上传
-                        else if (op.Equals("u") || op.Equals("up") || op.Equals("2"))
+                        else if (op.Equals("u") || op.Contains("up") || op.Equals("2"))
                         {
                             DorU = true;//设置上传下载中标志位
                             Write("FileName:");
-                            FileName = "..\\..\\" + ReadLine();//读取要上传的文件名
+                            FileName = ReadLine();//读取要上传的文件名
                             //打开文件
-                            try { fs = new FileStream(FileName, FileMode.Open, FileAccess.Read); }
+                            try { fs = new FileStream(LocalDirectory + FileName, FileMode.Open, FileAccess.Read); }
                             //文件不存在，解除上传下载模式
                             catch (FileNotFoundException)
                             {
@@ -211,13 +215,71 @@ namespace Client
                                 WriteLine("本地不存在此文件，请检查拼写");
                                 break;
                             }
-                            pSend.ServiceType = Service.UpLoadSYN;
+                            pSend = new Package { ServiceType = Service.UpLoadSYN };
                             pSend.PayLoad.Add(Encode(FileName));//将文件名发送给服务器
                         }
-                        //退出
-                        else if (op.Equals("e") || op.Equals("exit") || op.Equals("0"))
+                        //浏览本地目录
+                        else if (op.Equals("l") || op.Contains("local") || op.Equals("3"))
                         {
-                            pSend.ServiceType = Service.Logout;
+                            while (true)
+                            {
+                                LocalDirectory = Directory.GetCurrentDirectory();//获取当前目录
+                                string dir = CommandLine.Dir(LocalDirectory);//显示目录内容
+                                Write("本地目录："); WriteLine(dir);
+                                WriteLine("按回车键返回，或使用cd命令切换目录");
+                                op = ReadLine();
+                                if (op.Equals(""))//无输入退出
+                                    break;
+                                else if (op.StartsWith("cd "))//切换目录
+                                {
+                                    op = op.Remove(0, 3);
+                                    try { CommandLine.Cd(op); }
+                                    catch { WriteLine("该目录不存在"); }
+                                }
+                                WriteLine();
+                            }
+                            continue;
+                        }
+                        //浏览远程目录
+                        else if (op.Equals("r") || op.Contains("remote") || op.Equals("4"))
+                        {
+                            while (true)
+                            {
+                                //查询远程目录
+                                pSend = new Package { ServiceType = Service.Directory };
+                                Package.Send(socket, pSend, key, rsa);
+                                pRecive = Package.Recive(socket, key, rsa);
+                                //更新本地记录
+                                if (pRecive.ServiceType == Service.Directory)
+                                {
+                                    RemoteDirectory = Decode(pRecive.PayLoad[0]);
+                                    Write("远程目录："); WriteLine(Decode(pRecive.PayLoad[1]));
+                                }
+                                WriteLine("按回车键返回，或使用cd命令切换目录");
+                                op = ReadLine();
+                                if (op.Equals(""))//无输入退出
+                                    break;
+                                else if (op.StartsWith("cd "))//切换目录
+                                {
+                                    op = op.Remove(0, 3);
+                                    //构造数据包
+                                    pSend = new Package { ServiceType = Service.ChangeDirectory };
+                                    pSend.PayLoad.Add(Encode(op));
+                                    //发送
+                                    Package.Send(socket, pSend, key, rsa);
+                                    pRecive = Package.Recive(socket, key, rsa);
+                                    //服务端报错：目录不存在
+                                    if (pRecive.ServiceType == Service.DirectoryNotFound)
+                                        WriteLine("远端不存在此目录");
+                                }
+                                WriteLine();
+                            }
+                            continue;
+                        }
+                        //退出
+                        else if (op.Equals("e") || op.Contains("exit") || op.Equals("0"))
+                        {
+                            pSend = new Package { ServiceType = Service.Logout };
                             Login = false;
                             UserName = null;
                             key = null;
@@ -260,7 +322,7 @@ namespace Client
                         case Service.DownLoad:
                             fs.Write(pRecive.PayLoad[0], 0, 1);
                             pSend = new Package();
-                            pSend.ServiceType = Service.ACK;
+                            pSend = new Package { ServiceType = Service.ACK };
                             Package.Send(socket, pSend, key, rsa);
                             break;
                         //下载结束
@@ -284,9 +346,9 @@ namespace Client
                                 byte[] buffer = new byte[Size.FileSize];
                                 pSend = new Package();
                                 //未到文件末尾
-                                if (fs.Read(buffer, 0, 1) != 0)
+                                if (fs.Read(buffer, 0, Size.FileSize) != 0)
                                 {
-                                    pSend.ServiceType = Service.UpLoad;
+                                    pSend = new Package { ServiceType = Service.UpLoad };
                                     pSend.PayLoad.Add(buffer);
                                 }
                                 //到了文件末尾
@@ -295,21 +357,23 @@ namespace Client
                                     DorU = false;
                                     WriteLine("上传完成");
                                     fs.Close();
-                                    pSend.ServiceType = Service.EOF;
+                                    pSend = new Package { ServiceType = Service.EOF };
                                 }
                                 Package.Send(socket, pSend, key, rsa);
-                            }
-                            else
-                            {
-                                ;
                             }
                             break;
                     }
                 }
             }
             //特殊错误情况：如果远程主机关闭了套接字，则Receive函数立刻返回。但由于未收到信息，所以反序列化时会报错
-            catch (System.Runtime.Serialization.SerializationException) { WriteLine("远程主机已断开连接"); }
-            catch (Exception e) { WriteLine(e.ToString()); }
+            catch (System.Runtime.Serialization.SerializationException)
+            {
+                WriteLine("远程主机已断开连接");
+            }
+            catch (Exception e)
+            {
+                WriteLine(e.ToString());
+            }
         }
     }
 }

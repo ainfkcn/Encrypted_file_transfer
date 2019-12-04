@@ -19,6 +19,7 @@
         //C<->S
         ACK,
         EOF,
+        Directory,
 
         //C->S
         Login,
@@ -27,17 +28,16 @@
         DownLoadSYN,
         UpLoadSYN,
         UpLoad,
+        ChangeDirectory,
 
         //S->C
-        //注册
         RegistrationSuccess,
         UserExist,
         EmptyPassword,
-        //登陆
         LoginSuccess,
         WrongPassword,
-        //文件传输
         FileNotFound,
         DownLoad,
+        DirectoryNotFound,
     }
 }

@@ -120,9 +120,9 @@ namespace Server
             string UserName = null;     //登陆后用来标识该线程连接对应的用户
             FileStream fs = null;       //文件流
             Package pRecive;            //接收数据包
-            Package pSend;              //发送数据包
+            Package pSend = null;       //发送数据包
             byte[] buffer = null;       //接收字符串缓冲区
-            byte[] key = null;
+            byte[] key = null;          //AES密钥
             int ret;                    //读取的文件字节数
             #endregion
             try
@@ -130,7 +130,6 @@ namespace Server
                 while (true)
                 {
                     pRecive = Package.Recive(socket, key, rsa);//接收数据包
-                    pSend = new Package();//在switch外声明，以便可以在switch块后统一发送
                     //分类处理逻辑
                     switch (pRecive.ServiceType)
                     {
@@ -141,7 +140,7 @@ namespace Server
                                 //密码为空，拒绝注册
                                 if (Decode(pRecive.PayLoad[1]) == "")
                                 {
-                                    pSend.ServiceType = Service.EmptyPassword;
+                                    pSend = new Package { ServiceType = Service.EmptyPassword };
                                     log.WriteLine($"{DateTime.Now.ToLocalTime()} {socket.RemoteEndPoint} 用空密码注册");
                                 }
                                 else
@@ -152,14 +151,14 @@ namespace Server
                                         User newUser = new User(Decode(pRecive.PayLoad[0]), Decode(pRecive.PayLoad[1]));
                                         db.UserContext.Add(newUser);
                                         db.SaveChanges();
-                                        pSend.ServiceType = Service.RegistrationSuccess;
+                                        pSend = new Package { ServiceType = Service.RegistrationSuccess };
                                         log.WriteLine($"{DateTime.Now.ToLocalTime()} {socket.RemoteEndPoint} 以{Decode(pRecive.PayLoad[0])}注册成功");
                                     }
                                     //唯一的报错可能，用户名重复。告知客户端后拒绝注册
                                     catch
                                     {
                                         log.WriteLine($"{DateTime.Now.ToLocalTime()} {socket.RemoteEndPoint} 以重复用户名注册");
-                                        pSend.ServiceType = Service.UserExist;
+                                        pSend = new Package { ServiceType = Service.UserExist };
                                     }
                                 }
                             }
@@ -180,7 +179,7 @@ namespace Server
                                 if (user.Count() == 0)
                                 {
                                     log.WriteLine($"{DateTime.Now.ToLocalTime()} {socket.RemoteEndPoint} 密码错误");
-                                    pSend.ServiceType = Service.WrongPassword;
+                                    pSend = new Package { ServiceType = Service.WrongPassword };
                                 }
                                 else
                                 {
@@ -189,14 +188,14 @@ namespace Server
                                     using (var hash = new SHA384Managed())
                                         key = hash.ComputeHash(pRecive.PayLoad[1]);
                                     UserName = Decode(pRecive.PayLoad[0]);
-                                    pSend.ServiceType = Service.LoginSuccess;
+                                    pSend = new Package { ServiceType = Service.LoginSuccess };
                                 }
                             }
                             break;
                         //登出
                         case Service.Logout:
                             log.WriteLine($"{DateTime.Now.ToLocalTime()} {socket.RemoteEndPoint} 用户{UserName}退出登陆");
-                            pSend.ServiceType = Service.ACK;
+                            pSend = new Package { ServiceType = Service.ACK };
                             UserName = null;
                             key = null;
                             break;
@@ -207,12 +206,18 @@ namespace Server
                                 //打开文件，读取
                                 fs = new FileStream(Decode(pRecive.PayLoad[0]), FileMode.Open, FileAccess.Read);
                                 log.WriteLine($"{DateTime.Now.ToLocalTime()} {socket.RemoteEndPoint} {UserName} 下载{fs.Name}");
+                                //如果用户试图下载私钥文件
+                                if (fs.Name.Contains("rsa_private"))
+                                {
+                                    fs.Close();
+                                    throw new Exception();
+                                }
                                 buffer = new byte[Size.FileSize];
-                                ret = fs.Read(buffer, 0, 1);
+                                ret = fs.Read(buffer, 0, Size.FileSize);
                                 //未读到文件结尾
                                 if (ret != 0)
                                 {
-                                    pSend.ServiceType = Service.DownLoad;
+                                    pSend = new Package { ServiceType = Service.DownLoad };
                                     pSend.PayLoad.Add(buffer);
                                 }
                                 //读到文件结尾
@@ -220,7 +225,7 @@ namespace Server
                                 {
                                     log.WriteLine($"{DateTime.Now.ToLocalTime()} {socket.RemoteEndPoint} {UserName} 下载{fs.Name}成功");
                                     fs.Close();
-                                    pSend.ServiceType = Service.EOF;
+                                    pSend = new Package { ServiceType = Service.EOF };
                                 }
                                 break;
                             }
@@ -228,17 +233,24 @@ namespace Server
                             catch (FileNotFoundException)
                             {
                                 log.WriteLine($"{DateTime.Now.ToLocalTime()} {socket.RemoteEndPoint} {UserName} 下载{Decode(pRecive.PayLoad[0])}失败");
-                                pSend.ServiceType = Service.FileNotFound;
+                                pSend = new Package { ServiceType = Service.FileNotFound };
+                                break;
+                            }
+                            //违规下载记录
+                            catch
+                            {
+                                log.WriteLine($"警告：{DateTime.Now.ToLocalTime()} {socket.RemoteEndPoint} {UserName} 试图下载私钥");
+                                pSend = new Package { ServiceType = Service.FileNotFound };
                                 break;
                             }
                         //下载中（服务器继续给客户端发送文件）
                         case Service.ACK:
                             buffer = new byte[Size.FileSize];
-                            ret = fs.Read(buffer, 0, 1);
+                            ret = fs.Read(buffer, 0, Size.FileSize);
                             //未读到文件结尾
                             if (ret != 0)
                             {
-                                pSend.ServiceType = Service.DownLoad;
+                                pSend = new Package { ServiceType = Service.DownLoad };
                                 pSend.PayLoad.Add(buffer);
                             }
                             //读到文件结尾
@@ -246,7 +258,7 @@ namespace Server
                             {
                                 log.WriteLine($"{DateTime.Now.ToLocalTime()} {socket.RemoteEndPoint} {UserName} 下载{fs.Name}成功");
                                 fs.Close();
-                                pSend.ServiceType = Service.EOF;
+                                pSend = new Package { ServiceType = Service.EOF };
                             }
                             break;
                         //上传请求（打开文件，准备接收）
@@ -254,17 +266,33 @@ namespace Server
                             fs = new FileStream(Decode(pRecive.PayLoad[0]), FileMode.OpenOrCreate, FileAccess.Write);
                             log.WriteLine($"{DateTime.Now.ToLocalTime()} {socket.RemoteEndPoint} {UserName} 上传{fs.Name}");
                             fs.Seek(0, SeekOrigin.End);//打开文件将指针放到结尾（断点续传使用）
-                            pSend.ServiceType = Service.ACK;
+                            pSend = new Package { ServiceType = Service.ACK };
                             break;
                         //上传中（继续接收文件）
                         case Service.UpLoad:
                             fs.Write(pRecive.PayLoad[0], 0, 1);
-                            pSend.ServiceType = Service.ACK;
+                            pSend = new Package { ServiceType = Service.ACK };
                             break;
                         //上传结束
                         case Service.EOF:
                             log.WriteLine($"{DateTime.Now.ToLocalTime()} {socket.RemoteEndPoint} {UserName} 上传{fs.Name}成功");
                             fs.Close();
+                            break;
+                        //浏览远程目录
+                        case Service.Directory:
+                            pSend = new Package { ServiceType = Service.Directory };
+                            pSend.PayLoad.Add(Encode(Directory.GetCurrentDirectory()));
+                            pSend.PayLoad.Add(Encode(CommandLine.Dir(Directory.GetCurrentDirectory())));
+                            break;
+                        //切换远程目录
+                        case Service.ChangeDirectory:
+                            try { CommandLine.Cd(Decode(pRecive.PayLoad[0])); }
+                            catch
+                            {
+                                pSend = new Package { ServiceType = Service.DirectoryNotFound };
+                                break;
+                            }
+                            pSend = new Package { ServiceType = Service.ACK };
                             break;
                     }
                     //发送回复包

@@ -10,7 +10,6 @@
         //文件读入缓冲区
         public static int FileSize = 1024;
     }
-
     /// <summary>
     /// 通信协议的功能号
     /// </summary>
@@ -37,6 +36,9 @@
         LoginSuccess,
         WrongPassword,
         FileNotFound,
+        TryDownloadPrivate,
+        ClientNoEnoughSpace,
+        ServerNoEnoughSpace,
         DownLoad,
         DirectoryNotFound,
     }

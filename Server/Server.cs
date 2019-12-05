@@ -133,7 +133,7 @@ namespace Server
                     //分类处理逻辑
                     switch (pRecive.ServiceType)
                     {
-                        //注册
+                        #region 注册
                         case Service.Registration:
                             using (var db = new UserRegistration())
                             {
@@ -163,7 +163,8 @@ namespace Server
                                 }
                             }
                             break;
-                        //登陆
+                        #endregion
+                        #region 登陆
                         case Service.Login:
                             using (var db = new UserRegistration())
                             {
@@ -192,25 +193,38 @@ namespace Server
                                 }
                             }
                             break;
-                        //登出
+                        #endregion
+                        #region 登出
                         case Service.Logout:
                             log.WriteLine($"{DateTime.Now.ToLocalTime()} {socket.RemoteEndPoint} 用户{UserName}退出登陆");
                             pSend = new Package { ServiceType = Service.ACK };
                             UserName = null;
                             key = null;
                             break;
+                        #endregion
+                        #region 下载
                         //下载请求（服务器给客户端发送首份文件）
                         case Service.DownLoadSYN:
                             try
                             {
-                                //打开文件，读取
+                                log.WriteLine($"{DateTime.Now.ToLocalTime()} {socket.RemoteEndPoint} {UserName} 下载{Decode(pRecive.PayLoad[0])}");
                                 fs = new FileStream(Decode(pRecive.PayLoad[0]), FileMode.Open, FileAccess.Read);
-                                log.WriteLine($"{DateTime.Now.ToLocalTime()} {socket.RemoteEndPoint} {UserName} 下载{fs.Name}");
-                                //如果用户试图下载私钥文件
+                                FileInfo fi = new FileInfo(fs.Name);
+                                //用户空间不足
+                                if (Convert.ToInt64(Decode(pRecive.PayLoad[1])) < fi.Length)
+                                {
+                                    pSend = new Package { ServiceType = Service.ServerNoEnoughSpace };
+                                    log.WriteLine($"{DateTime.Now.ToLocalTime()} {socket.RemoteEndPoint} {UserName} 下载{fs.Name}失败，磁盘空间不足");
+                                    fs.Close();
+                                    break;
+                                }
+                                //用户试图下载私钥文件
                                 if (fs.Name.Contains("rsa_private"))
                                 {
                                     fs.Close();
-                                    throw new Exception();
+                                    pSend = new Package { ServiceType = Service.TryDownloadPrivate };
+                                    log.WriteLine($"警告：{DateTime.Now.ToLocalTime()} {socket.RemoteEndPoint} {UserName} 试图下载私钥");
+                                    break;
                                 }
                                 buffer = new byte[Size.FileSize];
                                 ret = fs.Read(buffer, 0, Size.FileSize);
@@ -232,14 +246,14 @@ namespace Server
                             //告诉客户端文件不存在
                             catch (FileNotFoundException)
                             {
-                                log.WriteLine($"{DateTime.Now.ToLocalTime()} {socket.RemoteEndPoint} {UserName} 下载{Decode(pRecive.PayLoad[0])}失败");
+                                log.WriteLine($"{DateTime.Now.ToLocalTime()} {socket.RemoteEndPoint} {UserName} 下载{Decode(pRecive.PayLoad[0])}失败，文件不存在");
                                 pSend = new Package { ServiceType = Service.FileNotFound };
                                 break;
                             }
-                            //违规下载记录
-                            catch
+                            //试图下载文件夹
+                            catch (UnauthorizedAccessException)
                             {
-                                log.WriteLine($"警告：{DateTime.Now.ToLocalTime()} {socket.RemoteEndPoint} {UserName} 试图下载私钥");
+                                log.WriteLine($"{DateTime.Now.ToLocalTime()} {socket.RemoteEndPoint} {UserName} 下载{Decode(pRecive.PayLoad[0])}失败，试图下载文件夹");
                                 pSend = new Package { ServiceType = Service.FileNotFound };
                                 break;
                             }
@@ -261,16 +275,26 @@ namespace Server
                                 pSend = new Package { ServiceType = Service.EOF };
                             }
                             break;
+                        #endregion
+                        #region 上传
                         //上传请求（打开文件，准备接收）
                         case Service.UpLoadSYN:
+                            log.WriteLine($"{DateTime.Now.ToLocalTime()} {socket.RemoteEndPoint} {UserName} 上传{pRecive.PayLoad[0]}");
+                            DriveInfo driveInfo = new DriveInfo(Directory.GetDirectoryRoot(Directory.GetCurrentDirectory()));
+                            //服务器空间不足
+                            if (driveInfo.AvailableFreeSpace < Convert.ToInt64(Decode(pRecive.PayLoad[1])))
+                            {
+                                log.WriteLine($"{DateTime.Now.ToLocalTime()} {socket.RemoteEndPoint} {UserName} 上传{pRecive.PayLoad[0]}失败，服务器空间不足");
+                                pSend = new Package { ServiceType = Service.ServerNoEnoughSpace };
+                                break;
+                            }
                             fs = new FileStream(Decode(pRecive.PayLoad[0]), FileMode.OpenOrCreate, FileAccess.Write);
-                            log.WriteLine($"{DateTime.Now.ToLocalTime()} {socket.RemoteEndPoint} {UserName} 上传{fs.Name}");
                             fs.Seek(0, SeekOrigin.End);//打开文件将指针放到结尾（断点续传使用）
                             pSend = new Package { ServiceType = Service.ACK };
                             break;
                         //上传中（继续接收文件）
                         case Service.UpLoad:
-                            fs.Write(pRecive.PayLoad[0], 0, 1);
+                            fs.Write(pRecive.PayLoad[0], 0, Size.FileSize);
                             pSend = new Package { ServiceType = Service.ACK };
                             break;
                         //上传结束
@@ -278,6 +302,8 @@ namespace Server
                             log.WriteLine($"{DateTime.Now.ToLocalTime()} {socket.RemoteEndPoint} {UserName} 上传{fs.Name}成功");
                             fs.Close();
                             break;
+                        #endregion
+                        #region 远程目录
                         //浏览远程目录
                         case Service.Directory:
                             pSend = new Package { ServiceType = Service.Directory };
@@ -294,14 +320,15 @@ namespace Server
                             }
                             pSend = new Package { ServiceType = Service.ACK };
                             break;
+                            #endregion
                     }
                     //发送回复包
                     Package.Send(socket, pSend, key, rsa);
                 }
             }
             //特殊错误情况：如果远程主机关闭了套接字，则Receive函数立刻返回。但由于未收到信息，所以反序列化时会报错
-            catch (System.Runtime.Serialization.SerializationException) { WriteLine("远程主机已断开连接"); }
-            catch (SocketException) { WriteLine("远程主机已断开连接"); }
+            catch (System.Runtime.Serialization.SerializationException) { WriteLine("xuliehua远程主机已断开连接"); }
+            catch (SocketException) { WriteLine("socket远程主机已断开连接"); }
             catch (Exception e)
             {
                 log.WriteLine($"{DateTime.Now.ToLocalTime()} {socket.RemoteEndPoint} {UserName} {e}");

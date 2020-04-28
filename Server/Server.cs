@@ -41,7 +41,7 @@ namespace Server
         public Server()
         {
             //打开/创建日志文件，并使用追加模式写入
-            log = new StreamWriter("..\\..\\" + DateTime.Today.ToLongDateString() + ".log", true);
+            log = new StreamWriter("D:\\code\\C#\\加密文件传输\\log\\" + DateTime.Today.ToLongDateString() + ".log", true);
             //注册处理ctrl+c事件的委托
             CancelKeyPress += new ConsoleCancelEventHandler(Server_CancelKeyPress);
             //绑定套接字

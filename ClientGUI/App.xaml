@@ -1,7 +1,7 @@
-﻿<Application x:Class="GUIClient.App"
+﻿<Application x:Class="ClientGUI.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:local="clr-namespace:GUIClient"
+             xmlns:local="clr-namespace:ClientGUI"
              StartupUri="MainWindow.xaml">
     <Application.Resources>
          

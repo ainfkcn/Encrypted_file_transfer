@@ -11,7 +11,7 @@ using static System.Console;
 namespace Client
 {
     public class Client
-    {
+    { 
         /// <summary>
         /// 通信中使用的Tcp套接字
         /// </summary>

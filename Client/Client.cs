@@ -11,7 +11,7 @@ using static System.Console;
 namespace Client
 {
     public class Client
-    { 
+    {
         /// <summary>
         /// 通信中使用的Tcp套接字
         /// </summary>
@@ -34,36 +34,14 @@ namespace Client
         /// </summary>
         public Client()
         {
-            //绑定套接字
-            IPAddress ipAddress = IPAddress.Parse("127.0.0.1");
-            remoteEP = new IPEndPoint(ipAddress, 11000);
-            socket = new Socket(ipAddress.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
-            //加载公钥，如果公钥文件不存在，则报错退出
-            try
-            {
-                StreamReader sr = new StreamReader("..\\..\\rsa_public", true);
-                rsa.FromXmlString(sr.ReadToEnd());
-                sr.Close();
-            }
-            catch (FileNotFoundException) { throw new Exception("服务器公钥丢失，请去指定位置下载服务器公钥"); }
         }
         /// <summary>
         /// 客户端启动，连接后开始进入交互函数
         /// </summary>
         public void Start()
         {
-            //连接服务器，交互，关闭套接字
-            try
-            {
-                socket.Connect(remoteEP);
-                WriteLine("Socket connected to {0}", socket.RemoteEndPoint.ToString());
-                Shell();
-                socket.Shutdown(SocketShutdown.Both);
-            }
-            //出错则说明服务器未启动
-            catch (SocketException) { WriteLine("远程服务器未启动"); }
-            //释放套接字
-            finally { socket.Close(); }
+            //Shell();
+            //socket.Shutdown(SocketShutdown.Both);
         }
         /// <summary>
         /// 构想中的交互函数，无参型；有参型用来做shell
@@ -71,9 +49,8 @@ namespace Client
         public void Shell()
         {
             #region 变量声明，解决作用域的限制
-            Package pSend;              //发送数据包
-            Package pRecive;            //接收数据包
-            string UserName = null;     //用户名
+            
+            
             string op;                  //用户操作
             string FileName = null;     //文件名
             string LocalDirectory = Directory.GetCurrentDirectory();//本地路径
@@ -89,40 +66,6 @@ namespace Client
                     //未登陆时的提示符和操作逻辑
                     if (!Login && !DorU)
                     {
-                        //用户操作选项和提示符
-                        WriteLine("1.Login");
-                        WriteLine("9.Registration");
-                        WriteLine("0.Exit");
-                        Write(">");
-                        op = ReadLine().ToLower();//读入操作指令
-                        //登陆部分
-                        if (op.Equals("l") || op.Equals("log") || op.Equals("1"))
-                        {
-                            pSend = new Package { ServiceType = Service.Login };//数据包构造
-                            Write("用户名:");
-                            UserName = ReadLine();
-                            pSend.PayLoad.Add(Encode(UserName));//用户名
-                            //密码（不回显）
-                            Write("密码:");
-                            string pw;
-                            List<char> password = new List<char>();
-                            while (true)
-                            {
-                                char temp = ReadKey(true).KeyChar;//读取输入
-                                //如果是回车键跳出，不是则将字符附加到串的尾部
-                                if (temp == '\r')
-                                {
-                                    pw = new string(password.ToArray());
-                                    using (var hash = new SHA384Managed())
-                                        key = hash.ComputeHash(Encode(pw));
-                                    pSend.PayLoad.Add(Encode(pw));
-                                    break;
-                                }
-                                else
-                                    password.Add(temp);
-                            }
-                            WriteLine();
-                        }
                         //注册部分
                         else if (op.Equals("r") || op.Equals("reg") || op.Equals("9"))
                         {
@@ -327,16 +270,7 @@ namespace Client
                         #endregion
                         #region 登录
                         //登陆时密码或用户名错误
-                        case Service.WrongPassword:
-                            WriteLine("用户名或密码错误");
-                            UserName = null;
-                            key = null;
-                            break;
-                        //登录成功
-                        case Service.LoginSuccess:
-                            WriteLine("登陆成功");
-                            Login = true;
-                            break;
+
                         #endregion
                         #region 下载
                         //下载中（将接收到的数据写入文件）

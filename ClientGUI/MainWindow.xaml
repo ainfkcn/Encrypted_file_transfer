@@ -6,7 +6,16 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:ClientGUI"
         mc:Ignorable="d"
-        Title="加密文件传输" Height="296" Width="436" Loaded="Window_Loaded">
+        Title="加密文件传输" Height="296" Width="436" Loaded="Window_Loaded" Closed="Window_Closed">
+    <Window.Resources>
+        <RoutedCommand x:Key="PressLoginButton"/>
+    </Window.Resources>
+    <Window.InputBindings>
+        <KeyBinding Gesture="Enter" Command="{StaticResource PressLoginButton}"/>
+    </Window.InputBindings>
+    <Window.CommandBindings>
+        <CommandBinding Command="{StaticResource PressLoginButton}" Executed="ButtonLogin_Click"/>
+    </Window.CommandBindings>
     <Grid>
         <Canvas x:Name="Canvas1">
             <TextBlock x:Name="TextBlockUserName" Canvas.Left="70" TextWrapping="NoWrap" Canvas.Top="66" Text="用户名：" Height="19" Width="50"/>
@@ -17,9 +26,10 @@
             <PasswordBox x:Name="PasswordBox" Height="23" Canvas.Left="144" Canvas.Top="131" Width="120" Visibility="Visible"/>
             <CheckBox x:Name="CheckBox" Content="显示密码" Canvas.Left="307" Canvas.Top="139"
                       IsChecked="False" Checked="CheckBox_Checked" Unchecked="CheckBox_Unchecked" />
-            <Button x:Name="Button" Content="登陆" HorizontalAlignment="Left" VerticalAlignment="Top" Width="75" Canvas.Left="170" Canvas.Top="195" Click="Button_Click"/>
+            <Button x:Name="ButtonLogin" Content="登陆" HorizontalAlignment="Left" VerticalAlignment="Top" Width="76" Canvas.Left="164" Canvas.Top="191" Click="ButtonLogin_Click"/>
+            <Button x:Name="ButtonRegistration" Content="注册" HorizontalAlignment="Left" VerticalAlignment="Top" Width="75" Canvas.Left="307" Canvas.Top="191" Click="ButtonRegistration_Click"/>
         </Canvas>
-        <Canvas x:Name="Canvas2">
+        <Canvas x:Name="Canvas2" Visibility="Collapsed">
             <TreeView x:Name="LocalView" Height="570" Canvas.Top="29" Width="400"/>
             <TextBlock x:Name="textBlockLoacal" TextWrapping="NoWrap" Text="本地目录：" Height="22" Width="74" FontSize="16" Canvas.Top="4"/>
             <TreeView x:Name="RemoteView" Height="570" Canvas.Top="29" Width="400" Canvas.Left="552"/>

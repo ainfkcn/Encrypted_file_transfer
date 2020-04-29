@@ -89,6 +89,12 @@ namespace Server
             {
                 try
                 {
+                    //启动之初进行一次数据库连接，加速之后的查询
+                    using (var db = new UserRegistration())
+                    {
+                        _ = from u in db.UserContext
+                            select u;
+                    }
                     listener.Bind(localEndPoint);
                     listener.Listen(10);
                     log.WriteLine($"{DateTime.Now.ToLocalTime()} 服务器启动成功");
@@ -327,8 +333,8 @@ namespace Server
                 }
             }
             //特殊错误情况：如果远程主机关闭了套接字，则Receive函数立刻返回。但由于未收到信息，所以反序列化时会报错
-            catch (System.Runtime.Serialization.SerializationException) { WriteLine("xuliehua远程主机已断开连接"); }
-            catch (SocketException) { WriteLine("socket远程主机已断开连接"); }
+            catch (System.Runtime.Serialization.SerializationException) { WriteLine("Serialization：远程主机已断开连接"); }
+            catch (SocketException) { WriteLine("Socket：远程主机已断开连接"); }
             catch (Exception e)
             {
                 log.WriteLine($"{DateTime.Now.ToLocalTime()} {socket.RemoteEndPoint} {UserName} {e}");

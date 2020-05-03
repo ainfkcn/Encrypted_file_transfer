@@ -204,14 +204,132 @@ namespace ClientGUI
             finally { socket.Close(); }
         }
 
+        /// <summary>
+        /// 上传按钮的事件处理
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
         private void Upload_Click(object sender, RoutedEventArgs e)
         {
-
+            //冻结窗口
+            Window.IsEnabled = false;
+            string FileName = ((TreeViewItem)LocalView.SelectedItem).Tag as string;
+            FileStream fs;
+            //检查文件属性是否正确
+            try { fs = new FileStream(FileName, FileMode.Open, FileAccess.Read); }
+            catch (FileNotFoundException) { MessageBox.Show("文件不存在"); Window.IsEnabled = true; return; }
+            catch (UnauthorizedAccessException) { MessageBox.Show("不能上传文件夹"); Window.IsEnabled = true; return; }
+            //构造通信包
+            pSend = new Package { ServiceType = Service.UpLoadSYN };
+            FileName = FileName.Substring(FileName.LastIndexOf('\\') + 1);
+            pSend.PayLoad.Add(Encode(FileName));//将文件名发送给服务器
+            FileInfo fi = new FileInfo(fs.Name);
+            pSend.PayLoad.Add(Encode(fi.Length.ToString()));
+            Package.Send(socket, pSend, key, rsa);
+            while (true)
+            {
+                pRecive = Package.Recive(socket, key, rsa);
+                switch (pRecive.ServiceType)
+                {
+                    //上传中（读取文件发送给服务器端）
+                    case Service.ACK:
+                        byte[] buffer = new byte[ClassLibrary.Size.FileSize];
+                        //未到文件末尾
+                        if (fs.Read(buffer, 0, ClassLibrary.Size.FileSize) != 0)
+                        {
+                            pSend = new Package { ServiceType = Service.UpLoad };
+                            pSend.PayLoad.Add(buffer);
+                        }
+                        //到了文件末尾
+                        else
+                        {
+                            Window.IsEnabled = true;
+                            MessageBox.Show("上传完成");
+                            fs.Close();
+                            pSend = new Package { ServiceType = Service.EOF };
+                            return;
+                        }
+                        Package.Send(socket, pSend, key, rsa);
+                        break;
+                    //服务器空间不足
+                    case Service.ServerNoEnoughSpace:
+                        Window.IsEnabled = true;
+                        MessageBox.Show("上传失败，服务器空间不足");
+                        fs.Close();
+                        return;
+                }
+            }
         }
 
+        /// <summary>
+        /// 下载按钮的事件处理
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
         private void Download_Click(object sender, RoutedEventArgs e)
         {
-
+            //冻结窗口
+            Window.IsEnabled = false;
+            string FileName = ((TreeViewItem)RemoteView.SelectedItem).Tag as string;
+            FileStream fs;
+            //检查文件属性是否正确
+            if (FileName.Contains("rsa_private"))
+            {
+                MessageBox.Show("不允许下载私钥");
+                Window.IsEnabled = true;
+                return;
+            }
+            //构造通信包
+            pSend = new Package { ServiceType = Service.DownLoadSYN };
+            pSend.PayLoad.Add(Encode(FileName));//将文件名发送给服务端，让服务器寻找文件
+            DriveInfo driveInfo = new DriveInfo(Directory.GetDirectoryRoot(Directory.GetCurrentDirectory()));
+            pSend.PayLoad.Add(Encode(driveInfo.AvailableFreeSpace.ToString()));
+            FileName = FileName.Substring(FileName.LastIndexOf('\\') + 1);
+            fs = new FileStream(FileName, FileMode.OpenOrCreate, FileAccess.Write);
+            fs.Seek(0, SeekOrigin.End);//打开文件并将光标设置到末尾（断点续传需要）
+            Package.Send(socket, pSend, key, rsa);
+            while (true)
+            {
+                pRecive = Package.Recive(socket, key, rsa);
+                switch (pRecive.ServiceType)
+                {
+                    #region 下载
+                    //下载中（将接收到的数据写入文件）
+                    case Service.DownLoad:
+                        fs.Write(pRecive.PayLoad[0], 0, ClassLibrary.Size.FileSize);
+                        pSend = new Package { ServiceType = Service.ACK };
+                        Package.Send(socket, pSend, key, rsa);
+                        break;
+                    //下载结束
+                    case Service.EOF:
+                        Window.IsEnabled = true;
+                        MessageBox.Show("下载成功");
+                        fs.Close();
+                        return;
+                    //服务器未找到要下载的文件
+                    case Service.FileNotFound:
+                        Window.IsEnabled = true;
+                        MessageBox.Show("远程不存在此文件或是目录，请确定文件存在且不是目录");
+                        fs.Close();
+                        File.Delete(FileName);//删除创建的空文件
+                        return;
+                    //客户磁盘空间不足
+                    case Service.ClientNoEnoughSpace:
+                        Window.IsEnabled = true;
+                        MessageBox.Show("磁盘空间不足");
+                        fs.Close();
+                        File.Delete(FileName);//删除创建的空文件
+                        break;
+                    //试图下载私钥
+                    case Service.TryDownloadPrivate:
+                        Window.IsEnabled = true;
+                        MessageBox.Show("不允许下载私钥");
+                        fs.Close();
+                        File.Delete(FileName);//删除创建的空文件
+                        break;
+                        #endregion
+                }
+            }
         }
     }
 }

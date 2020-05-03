@@ -93,7 +93,7 @@ namespace Server
                     using (var db = new UserRegistration())
                     {
                         _ = from u in db.UserContext
-                                   select u;
+                            select u;
                     }
                     listener.Bind(localEndPoint);
                     listener.Listen(10);
@@ -342,6 +342,7 @@ namespace Server
             }
             finally
             {
+                try { fs.Close(); } catch { }
                 log.WriteLine($"{DateTime.Now.ToLocalTime()} {socket.RemoteEndPoint} 客户端关闭");
                 socket.Shutdown(SocketShutdown.Both);
                 socket.Close();

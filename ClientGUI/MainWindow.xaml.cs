@@ -8,7 +8,6 @@ using System.Security.Cryptography;
 using System.Windows;
 using System.Windows.Controls;
 using static ClassLibrary.EnDe;
-using System.Collections.Generic;
 
 namespace ClientGUI
 {
@@ -21,10 +20,9 @@ namespace ClientGUI
         private readonly IPEndPoint remoteEP;   //套接字绑定时所需的远端地址
         private byte[] key;                     //AES密钥
         private readonly RSACryptoServiceProvider rsa = new RSACryptoServiceProvider();//RSA公钥
-        private Package pSend;                          //发送数据包
-        public string UserName = null;                 //用户名
-        private Package pRecive;                        //接收数据包
-
+        private Package pSend;                  //发送数据包
+        public string UserName = null;          //用户名
+        private Package pRecive;                //接收数据包
         /// <summary>
         /// 构造函数，初始化变量和窗口
         /// </summary>
@@ -49,7 +47,6 @@ namespace ClientGUI
             //初始化窗口元素
             InitializeComponent();
         }
-
         /// <summary>
         /// 窗口启动时进行socket的链接与窗口的一些设置
         /// </summary>
@@ -73,7 +70,6 @@ namespace ClientGUI
                 Process.GetCurrentProcess().Kill();
             }
         }
-
         /// <summary>
         /// 显示密码
         /// </summary>
@@ -85,7 +81,6 @@ namespace ClientGUI
             TextBoxPassword.Visibility = Visibility.Visible;
             PasswordBox.Visibility = Visibility.Collapsed;
         }
-
         /// <summary>
         /// 取消显示密码
         /// </summary>
@@ -96,7 +91,6 @@ namespace ClientGUI
             TextBoxPassword.Visibility = Visibility.Collapsed;
             PasswordBox.Visibility = Visibility.Visible;
         }
-
         /// <summary>
         /// 按下登录按钮后的事件处理
         /// </summary>
@@ -139,7 +133,6 @@ namespace ClientGUI
                     break;
             }
         }
-
         /// <summary>
         /// 按下注册按钮后的事件处理
         /// </summary>
@@ -172,7 +165,6 @@ namespace ClientGUI
                     break;
             }
         }
-
         /// <summary>
         /// 按下注销按钮后的事件处理
         /// </summary>
@@ -189,7 +181,6 @@ namespace ClientGUI
             UserName = null;
             key = null;
         }
-
         /// <summary>
         /// 窗口关闭时的事件处理
         /// </summary>
@@ -203,7 +194,6 @@ namespace ClientGUI
             //关闭套接字
             finally { socket.Close(); }
         }
-
         /// <summary>
         /// 上传按钮的事件处理
         /// </summary>
@@ -260,7 +250,6 @@ namespace ClientGUI
                 }
             }
         }
-
         /// <summary>
         /// 下载按钮的事件处理
         /// </summary>

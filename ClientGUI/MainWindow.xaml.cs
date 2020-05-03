@@ -1,24 +1,14 @@
-﻿using System;
+﻿using ClassLibrary;
+using System;
+using System.Diagnostics;
 using System.IO;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using System.Net;
+using System.Net.Sockets;
+using System.Security.Cryptography;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
-using System.Net.Sockets;
-using System.Net;
-using System.Security.Cryptography;
-using System.Diagnostics;
-using ClassLibrary;
 using static ClassLibrary.EnDe;
+using System.Collections.Generic;
 
 namespace ClientGUI
 {
@@ -31,9 +21,9 @@ namespace ClientGUI
         private readonly IPEndPoint remoteEP;   //套接字绑定时所需的远端地址
         private byte[] key;                     //AES密钥
         private readonly RSACryptoServiceProvider rsa = new RSACryptoServiceProvider();//RSA公钥
-        Package pSend;                          //发送数据包
-        string UserName = null;                 //用户名
-        Package pRecive;                        //接收数据包
+        private Package pSend;                          //发送数据包
+        public string UserName = null;                 //用户名
+        private Package pRecive;                        //接收数据包
 
         /// <summary>
         /// 构造函数，初始化变量和窗口
@@ -68,17 +58,12 @@ namespace ClientGUI
         private void Window_Loaded(object sender, RoutedEventArgs e)
         {
             //窗口属性设置
-            Window.Height = 296;
-            Window.Width = 436;
-            Window.Top = (SystemParameters.PrimaryScreenHeight - Window.Height) / 2;
-            Window.Left = (SystemParameters.PrimaryScreenWidth - Window.Width) / 2;
-            Canvas1.Visibility = Visibility.Visible;
-            Canvas2.Visibility = Visibility.Collapsed;
+            AdjustWindowToScreen1();
             //连接服务器
             try
             {
                 socket.Connect(remoteEP);
-                MessageBox.Show($"Socket connected to {socket.RemoteEndPoint}");
+                //MessageBox.Show($"Socket connected to {socket.RemoteEndPoint}");
             }
             //出错则说明服务器未启动，结束程序
             catch (SocketException)
@@ -112,10 +97,15 @@ namespace ClientGUI
             PasswordBox.Visibility = Visibility.Visible;
         }
 
+        /// <summary>
+        /// 按下登录按钮后的事件处理
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
         private void ButtonLogin_Click(object sender, RoutedEventArgs e)
         {
             //发送登陆数据包
-            pSend = new Package { ServiceType = Service.Login };//数据包构造
+            pSend = new Package { ServiceType = Service.Login };
             //填充用户名
             UserName = TextBoxUserName.Text;
             pSend.PayLoad.Add(Encode(UserName));
@@ -128,177 +118,100 @@ namespace ClientGUI
             Package.Send(socket, pSend, key, rsa);
             //接收数据包
             pRecive = Package.Recive(socket, key, rsa);
+            //分类处理
             switch (pRecive.ServiceType)
             {
                 case Service.WrongPassword:
                     MessageBox.Show("用户名或密码错误");
                     UserName = string.Empty;
                     key = null;
-                    //TextBoxUserName.Text = string.Empty;
-                    PasswordBox.Password = string.Empty;
-                    TextBoxPassword.Text = string.Empty;
+                    InfoClear();
                     break;
                 case Service.LoginSuccess:
-                    MessageBox.Show("登陆成功");
+                    //MessageBox.Show("登陆成功");
                     //窗口属性设置
-                    Window.Height = 639;
-                    Window.Width = 960;
-                    Window.Top = (SystemParameters.PrimaryScreenHeight - Window.Height) / 2;
-                    Window.Left = (SystemParameters.PrimaryScreenWidth - Window.Width) / 2;
-                    Canvas1.Visibility = Visibility.Collapsed;
-                    Canvas2.Visibility = Visibility.Visible;
-                    //目录树初始化
-                    foreach (var drive in Directory.GetLogicalDrives())
-                    {
-                        // Create a new item for it
-                        var item = new TreeViewItem()
-                        {
-                            // Set the header
-                            Header = drive,
-                            // And the full path
-                            Tag = drive
-                        };
-                        // Add a dummy item
-                        item.Items.Add(null);
-                        // Listen out for item being expanded
-                        item.Expanded += Folder_Expanded;
-                        // Add it to the main tree-view
-                        LocalView.Items.Add(item);
-                    }
-                    foreach (var drive in Directory.GetLogicalDrives())
-                    {
-                        // Create a new item for it
-                        var item = new TreeViewItem()
-                        {
-                            // Set the header
-                            Header = drive,
-                            // And the full path
-                            Tag = drive
-                        };
-                        // Add a dummy item
-                        item.Items.Add(null);
-                        // Listen out for item being expanded
-                        item.Expanded += Folder_Expanded;
-                        // Add it to the main tree-view
-                        RemoteView.Items.Add(item);
-                    }
+                    AdjustWindowToScreen2();
+                    TextBlockUser.Text = "欢迎：" + UserName;
+                    //本地目录初始化
+                    LocalViewInitialize();
+                    //远程目录初始化
+                    RemoteViewInitialize();
                     break;
             }
         }
 
+        /// <summary>
+        /// 按下注册按钮后的事件处理
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
         private void ButtonRegistration_Click(object sender, RoutedEventArgs e)
         {
-
+            //发送登陆数据包
+            pSend = new Package { ServiceType = Service.Registration };
+            //填充用户名
+            UserName = TextBoxUserName.Text;
+            pSend.PayLoad.Add(Encode(UserName));
+            //填充登录口令
+            pSend.PayLoad.Add(Encode(PasswordBox.Password));
+            //发送数据包
+            Package.Send(socket, pSend, key, rsa);
+            //接收数据包
+            pRecive = Package.Recive(socket, key, rsa);
+            //分类处理
+            switch (pRecive.ServiceType)
+            {
+                case Service.RegistrationSuccess:
+                    MessageBox.Show("注册成功，请记好用户名和密码");
+                    break;
+                case Service.EmptyPassword:
+                    MessageBox.Show("注册失败，密码不能为空");
+                    break;
+                case Service.UserExist:
+                    MessageBox.Show("用户名已存在");
+                    break;
+            }
         }
 
+        /// <summary>
+        /// 按下注销按钮后的事件处理
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
         private void LogOut_Click(object sender, RoutedEventArgs e)
         {
-            Window.Height = 296;
-            Window.Width = 436;
-            Window.Top = (SystemParameters.PrimaryScreenHeight - Window.Height) / 2;
-            Window.Left = (SystemParameters.PrimaryScreenWidth - Window.Width) / 2;
-            Canvas1.Visibility = Visibility.Visible;
-            Canvas2.Visibility = Visibility.Collapsed;
-            LocalView.Items.Clear();
-            RemoteView.Items.Clear();
+            //调整窗口
+            AdjustWindowToScreen1();
+            //退出登录，抹除信息
+            pSend = new Package { ServiceType = Service.Logout };
+            Package.Send(socket, pSend, key, rsa);
+            Package.Recive(socket, key, rsa);
+            UserName = null;
+            key = null;
         }
 
-        private void Folder_Expanded(object sender, RoutedEventArgs e)
-        {
-            #region Initial Checks
-            TreeViewItem item = sender as TreeViewItem;
-            // If the item only contains the dummy data
-            if (item.Items.Count != 1 || item.Items[0] != null)
-                return;
-            // Clear dummy data
-            item.Items.Clear();
-            // Get full path
-            string fullPath = item.Tag as string;
-            #endregion
-
-            #region Get Folders
-            // Create a blank list for directories
-            List<string> directories = new List<string>();
-            // Try and get directories from the folder
-            // ignoring any issues doing so
-            try
-            {
-                var dirs = Directory.GetDirectories(fullPath);
-                if (dirs.Length > 0)
-                    directories.AddRange(dirs);
-            }
-            catch { }
-            // For each directory...
-            directories.ForEach(directoryPath =>
-            {
-                // Create directory item
-                var subItem = new TreeViewItem()
-                {
-                    // Set header as folder name
-                    Header = GetFileFolderName(directoryPath),
-                    // And tag as full path
-                    Tag = directoryPath
-                };
-                // Add dummy item so we can expand folder
-                subItem.Items.Add(null);
-                // Handle expanding
-                subItem.Expanded += Folder_Expanded;
-                // Add this item to the parent
-                item.Items.Add(subItem);
-            });
-            #endregion
-
-            #region Get Files
-            // Create a blank list for files
-            var files = new List<string>();
-            // Try and get files from the folder
-            // ignoring any issues doing so
-            try
-            {
-                var fs = Directory.GetFiles(fullPath);
-                if (fs.Length > 0)
-                    files.AddRange(fs);
-            }
-            catch { }
-            // For each file...
-            files.ForEach(filePath =>
-            {
-                // Create file item
-                var subItem = new TreeViewItem()
-                {
-                    // Set header as file name
-                    Header = GetFileFolderName(filePath),
-                    // And tag as full path
-                    Tag = filePath
-                };
-                // Add this item to the parent
-                item.Items.Add(subItem);
-            });
-            #endregion
-        }
-
-        public static string GetFileFolderName(string path)
-        {
-            // If we have no path, return empty
-            if (string.IsNullOrEmpty(path))
-                return string.Empty;
-            // Make all slashes back slashes
-            var normalizedPath = path.Replace('/', '\\');
-            // Find the last backslash in the path
-            var lastIndex = normalizedPath.LastIndexOf('\\');
-            // If we don't find a backslash, return the path itself
-            if (lastIndex <= 0)
-                return path;
-            // Return the name after the last back slash
-            return path.Substring(lastIndex + 1);
-        }
-
+        /// <summary>
+        /// 窗口关闭时的事件处理
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
         private void Window_Closed(object sender, EventArgs e)
         {
             //释放套接字
             try { socket.Shutdown(SocketShutdown.Both); }
             catch { }
+            //关闭套接字
             finally { socket.Close(); }
+        }
+
+        private void Upload_Click(object sender, RoutedEventArgs e)
+        {
+
+        }
+
+        private void Download_Click(object sender, RoutedEventArgs e)
+        {
+
         }
     }
 }

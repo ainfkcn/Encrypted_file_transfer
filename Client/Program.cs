@@ -4,8 +4,9 @@
     {
         static void Main()
         {
-            Client client = new Client();
-            client.Start();
+            //Client client = new Client();
+            //client.Start();
+
             return;
         }
     }

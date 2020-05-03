@@ -1,10 +1,6 @@
 ﻿using ClassLibrary;
 using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Net;
-using System.Net.Sockets;
-using System.Security.Cryptography;
 using static ClassLibrary.EnDe;
 using static System.Console;
 
@@ -13,48 +9,14 @@ namespace Client
     public class Client
     {
         /// <summary>
-        /// 通信中使用的Tcp套接字
-        /// </summary>
-        private readonly Socket socket;
-        /// <summary>
-        /// 套接字绑定时所需的远端地址
-        /// </summary>
-        private readonly IPEndPoint remoteEP;
-        /// <summary>
-        /// AES密钥
-        /// </summary>
-        private byte[] key;
-        /// <summary>
-        /// RSA公钥
-        /// </summary>
-        private readonly RSACryptoServiceProvider rsa = new RSACryptoServiceProvider();
-
-        /// <summary>
-        /// 默认无参数构造函数，初始化Tcp套接字
-        /// </summary>
-        public Client()
-        {
-        }
-        /// <summary>
-        /// 客户端启动，连接后开始进入交互函数
-        /// </summary>
-        public void Start()
-        {
-            //Shell();
-            //socket.Shutdown(SocketShutdown.Both);
-        }
-        /// <summary>
         /// 构想中的交互函数，无参型；有参型用来做shell
         /// </summary>
         public void Shell()
         {
-            #region 变量声明，解决作用域的限制
-            
-            
+            #region 变量声明，解决作用域
             string op;                  //用户操作
             string FileName = null;     //文件名
             string LocalDirectory = Directory.GetCurrentDirectory();//本地路径
-            string RemoteDirectory;     //远程路径
             bool Login = false;         //是否登录
             bool DorU = false;          //是否在上传或下载中
             FileStream fs = null;       //文件流
@@ -63,74 +25,9 @@ namespace Client
             {
                 while (true)
                 {
-                    //未登陆时的提示符和操作逻辑
-                    if (!Login && !DorU)
-                    {
-                        //注册部分
-                        else if (op.Equals("r") || op.Equals("reg") || op.Equals("9"))
-                        {
-                            pSend = new Package { ServiceType = Service.Registration };//数据包构造
-                            Write("用户名:"); pSend.PayLoad.Add(Encode(ReadLine()));//用户名
-                            //第一次输入密码（不回显）
-                            Write("密码:");
-                            string pw1;
-                            List<char> password = new List<char>();
-                            while (true)
-                            {
-                                char temp = ReadKey(true).KeyChar;//读取输入
-                                //如果是回车键跳出，不是则将字符附加到串的尾部
-                                if (temp == '\r')
-                                {
-                                    pw1 = new string(password.ToArray());
-                                    break;
-                                }
-                                else
-                                    password.Add(temp);
-                            }
-                            //第二次确认密码（不回显）
-                            Write("\n再次输入密码:");
-                            string pw2;
-                            password.Clear();
-                            while (true)
-                            {
-                                char temp = ReadKey(true).KeyChar;//读取输入
-
-                                //如果是回车键跳出，不是则将字符附加到串的尾部
-                                if (temp == '\r')
-                                {
-                                    pw2 = new string(password.ToArray());
-                                    break;
-                                }
-                                else
-                                    password.Add(temp);
-                            }
-                            //检测两次输入的密码是否一致，一致的通过，进行注册。不一致则直接返回
-                            if (pw1.Equals(pw2))
-                            {
-                                pSend.PayLoad.Add(Encode(pw1));
-                                WriteLine();
-                            }
-                            else
-                                WriteLine("\n两次密码不匹配");
-                        }
-                        //退出
-                        else if (op.Equals("e") || op.Equals("exit") || op.Equals("0")) break;
-                        //假如输入了其他乱七八糟的指令
-                        else continue;
-                        //发送数据包
-                        Package.Send(socket, pSend, key, rsa);
-                    }
                     //登陆后的提示符和操作逻辑
                     else if (Login && !DorU)
                     {
-                        //用户操作提示符
-                        WriteLine("1.DownLoad");
-                        WriteLine("2.UpLoad");
-                        WriteLine("3.LocalDirectory");
-                        WriteLine("4.RemoteDirectory");
-                        WriteLine("0.Exit");
-                        Write(UserName + ">");
-                        op = ReadLine().ToLower();//读入操作指令
                         //下载
                         if (op.Equals("d") || op.Contains("down") || op.Equals("1"))
                         {
@@ -177,75 +74,11 @@ namespace Client
                             FileInfo fi = new FileInfo(fs.Name);
                             pSend.PayLoad.Add(Encode(fi.Length.ToString()));
                         }
-                        //浏览本地目录
-                        else if (op.Equals("l") || op.Contains("local") || op.Equals("3"))
-                        {
-                            while (true)
-                            {
-                                LocalDirectory = Directory.GetCurrentDirectory();//获取当前目录
-                                string dir = CommandLine.Dir(LocalDirectory);//显示目录内容
-                                Write("本地目录："); WriteLine(dir);
-                                WriteLine("按回车键返回，或使用cd命令切换目录");
-                                op = ReadLine();
-                                if (op.Equals(""))//无输入退出
-                                    break;
-                                else if (op.StartsWith("cd "))//切换目录
-                                {
-                                    op = op.Remove(0, 3);
-                                    try { CommandLine.Cd(op); }
-                                    catch { WriteLine("该目录不存在"); }
-                                }
-                                WriteLine();
-                            }
-                            continue;
-                        }
-                        //浏览远程目录
-                        else if (op.Equals("r") || op.Contains("remote") || op.Equals("4"))
-                        {
-                            while (true)
-                            {
-                                //查询远程目录
-                                pSend = new Package { ServiceType = Service.Directory };
-                                Package.Send(socket, pSend, key, rsa);
-                                pRecive = Package.Recive(socket, key, rsa);
-                                //更新本地记录
-                                if (pRecive.ServiceType == Service.Directory)
-                                {
-                                    RemoteDirectory = Decode(pRecive.PayLoad[0]);
-                                    Write("远程目录："); WriteLine(Decode(pRecive.PayLoad[1]));
-                                }
-                                WriteLine("按回车键返回，或使用cd命令切换目录");
-                                op = ReadLine();
-                                if (op.Equals(""))//无输入退出
-                                    break;
-                                else if (op.StartsWith("cd "))//切换目录
-                                {
-                                    op = op.Remove(0, 3);
-                                    //构造数据包
-                                    pSend = new Package { ServiceType = Service.ChangeDirectory };
-                                    pSend.PayLoad.Add(Encode(op));
-                                    //发送
-                                    Package.Send(socket, pSend, key, rsa);
-                                    pRecive = Package.Recive(socket, key, rsa);
-                                    //服务端报错：目录不存在
-                                    if (pRecive.ServiceType == Service.DirectoryNotFound)
-                                        WriteLine("远端不存在此目录");
-                                }
-                                WriteLine();
-                            }
-                            continue;
-                        }
-                        //退出
-                        else if (op.Equals("e") || op.Contains("exit") || op.Equals("0"))
-                        {
-                            pSend = new Package { ServiceType = Service.Logout };
-                            Login = false;
-                            UserName = null;
-                            key = null;
-                            WriteLine("已退出登录");
-                        }
                         //如果输入了其他乱七八糟的指令
-                        else continue;
+                        else
+                        {
+                            continue;
+                        }
                         //发送数据包
                         Package.Send(socket, pSend, key, rsa);
                     }
@@ -254,24 +87,6 @@ namespace Client
                     //处理逻辑
                     switch (pRecive.ServiceType)
                     {
-                        #region 注册
-                        //注册成功
-                        case Service.RegistrationSuccess:
-                            WriteLine("注册成功，请记好用户名和密码");
-                            break;
-                        //注册密码为空
-                        case Service.EmptyPassword:
-                            WriteLine("注册失败，密码不能为空");
-                            break;
-                        //注册用户名已存在
-                        case Service.UserExist:
-                            WriteLine("用户名已存在");
-                            break;
-                        #endregion
-                        #region 登录
-                        //登陆时密码或用户名错误
-
-                        #endregion
                         #region 下载
                         //下载中（将接收到的数据写入文件）
                         case Service.DownLoad:

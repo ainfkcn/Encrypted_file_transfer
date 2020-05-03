@@ -40,6 +40,6 @@
         ClientNoEnoughSpace,
         ServerNoEnoughSpace,
         DownLoad,
-        DirectoryNotFound,
+        DirectoryNotFound
     }
 }

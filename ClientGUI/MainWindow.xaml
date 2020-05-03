@@ -17,25 +17,26 @@
         <CommandBinding Command="{StaticResource PressLoginButton}" Executed="ButtonLogin_Click"/>
     </Window.CommandBindings>
     <Grid>
-        <Canvas x:Name="Canvas1">
+        <Canvas x:Name="Canvas1" Visibility="Collapsed">
             <TextBlock x:Name="TextBlockUserName" Canvas.Left="70" TextWrapping="NoWrap" Canvas.Top="66" Text="用户名：" Height="19" Width="50"/>
             <TextBox x:Name="TextBoxUserName" Height="23" Canvas.Left="144" TextWrapping="NoWrap" Canvas.Top="62" Width="120"/>
             <TextBlock x:Name="TextBlockPassword" Canvas.Left="70" TextWrapping="NoWrap" Canvas.Top="139" Text="密码："/>
-            <TextBox x:Name="TextBoxPassword" Height="23" Canvas.Left="192" TextWrapping="NoWrap" Canvas.Top="191" Width="120"
-                     Text="{Binding ElementName=PasswordBox, Path=Password, Mode=TwoWay}" Visibility="Collapsed"/>
+            <TextBox x:Name="TextBoxPassword" Height="23" Canvas.Left="144" TextWrapping="NoWrap" Canvas.Top="131" Width="120"
+                     Text="{Binding ElementName=PasswordBox, Path=Password, Mode=TwoWay}" Visibility="Visible"/>
             <PasswordBox x:Name="PasswordBox" Height="23" Canvas.Left="144" Canvas.Top="131" Width="120" Visibility="Visible"/>
             <CheckBox x:Name="CheckBox" Content="显示密码" Canvas.Left="307" Canvas.Top="139"
                       IsChecked="False" Checked="CheckBox_Checked" Unchecked="CheckBox_Unchecked" />
             <Button x:Name="ButtonLogin" Content="登陆" HorizontalAlignment="Left" VerticalAlignment="Top" Width="76" Canvas.Left="164" Canvas.Top="191" Click="ButtonLogin_Click"/>
             <Button x:Name="ButtonRegistration" Content="注册" HorizontalAlignment="Left" VerticalAlignment="Top" Width="75" Canvas.Left="307" Canvas.Top="191" Click="ButtonRegistration_Click"/>
         </Canvas>
-        <Canvas x:Name="Canvas2" Visibility="Collapsed">
+        <Canvas x:Name="Canvas2">
             <TreeView x:Name="LocalView" Height="570" Canvas.Top="29" Width="400"/>
-            <TextBlock x:Name="textBlockLoacal" TextWrapping="NoWrap" Text="本地目录：" Height="22" Width="74" FontSize="16" Canvas.Top="4"/>
+            <TextBlock x:Name="TextBlockLoacal" TextWrapping="NoWrap" Text="本地目录" Height="22" Width="74" FontSize="16" Canvas.Top="4"/>
             <TreeView x:Name="RemoteView" Height="570" Canvas.Top="29" Width="400" Canvas.Left="552"/>
-            <TextBlock x:Name="textBlockRemote" TextWrapping="NoWrap" Text="远程目录：" Height="22" Width="74" FontSize="16" Canvas.Top="4" Canvas.Left="552"/>
-            <Button x:Name="Upload" Content="上传&gt;&gt;" Canvas.Left="405" Canvas.Top="233" Width="142" Height="34"/>
-            <Button x:Name="Download" Content="&lt;&lt;下载" Canvas.Left="405" Canvas.Top="338" Width="142" Height="34"/>
+            <TextBlock x:Name="TextBlockRemote" TextWrapping="NoWrap" Text="远程目录" Height="22" Width="74" FontSize="16" Canvas.Top="4" Canvas.Left="878"/>
+            <TextBlock x:Name="TextBlockUser" TextWrapping="NoWrap" Height="22" Width="142" FontSize="16" Canvas.Top="4" Canvas.Left="405"/>
+            <Button x:Name="Upload" Content="上传&gt;&gt;" Canvas.Left="405" Canvas.Top="233" Width="142" Height="34" Click="Upload_Click"/>
+            <Button x:Name="Download" Content="&lt;&lt;下载" Canvas.Left="405" Canvas.Top="338" Width="142" Height="34" Click="Download_Click"/>
             <Button x:Name="LogOut" Content="注销" Canvas.Left="405" Canvas.Top="565" Width="142" Height="34" Click="LogOut_Click"/>
         </Canvas>
     </Grid>
